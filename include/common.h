@@ -211,6 +211,31 @@ typedef void (interrupt_handler_t)(void *);
 #define MIN3(x, y, z)  min3(x, y, z)
 #define MAX3(x, y, z)  max3(x, y, z)
 
+#define NUM_RX_DESC 24
+#define NUM_TX_DESC 24
+#define CONFIG_SYS_RX_ETH_BUFFER    60
+//NUM_RX_DESC
+
+typedef struct _BUFFER_ELEM_    BUFFER_ELEM;
+
+struct _BUFFER_ELEM_
+{
+	int tx_idx;
+    unsigned char *pbuf;
+    BUFFER_ELEM       *next;
+    
+    
+};
+
+typedef struct _VALID_BUFFER_STRUCT_    VALID_BUFFER_STRUCT;
+
+struct _VALID_BUFFER_STRUCT_
+{
+    BUFFER_ELEM    *head;
+    BUFFER_ELEM    *tail;	
+};
+
+
 /*
  * Return the absolute value of a number.
  *

@@ -107,6 +107,8 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
+int             NetUipLoop = 0;
+
 /** BOOTP EXTENTIONS **/
 
 /* Our subnet mask (0=unknown) */
@@ -202,6 +204,18 @@ static ulong	timeStart;
 static ulong	timeDelta;
 /* THE transmit packet */
 uchar *NetTxPacket;
+
+#ifdef CONFIG_UIP
+extern uchar	*NetArpWaitTxPacket;	/* THE transmit packet */
+extern uchar	NetArpWaitPacketBuf[PKTSIZE_ALIGN + PKTALIGN];
+extern IPaddr_t	NetArpWaitReplyIP;
+
+extern int webfailsafe_is_running;
+void NetReceiveHttpd(volatile uchar * inpkt, int len);
+
+extern VALID_BUFFER_STRUCT  rt2880_free_buf_list;
+extern BUFFER_ELEM *rt2880_free_buf_entry_dequeue(VALID_BUFFER_STRUCT *hdr);
+#endif
 
 static int net_check_prereq(enum proto_t protocol);
 
@@ -963,9 +977,19 @@ NetReceive(uchar *inpkt, int len)
 
 	debug_cond(DEBUG_NET_PKT, "packet received\n");
 
+#ifdef CONFIG_UIP
+	if(webfailsafe_is_running){
+		NetReceiveHttpd(inpkt, len);
+		return;
+	}
+#endif
+
 	NetRxPacket = inpkt;
 	NetRxPacketLen = len;
 	et = (struct ethernet_hdr *)inpkt;
+
+        if (NetUipLoop == 1)
+                return;
 
 	/* too small packet? */
 	if (len < ETHER_HDR_SIZE)
@@ -1485,3 +1509,136 @@ ushort getenv_VLAN(char *var)
 {
 	return string_to_VLAN(getenv(var));
 }
+
+#ifdef CONFIG_UIP
+/**********************************************************************************
+ * HTTPD section
+ */
+
+void NetInitGlobalHttpd()
+{
+	bd_t* bd=gd->bd;
+#ifdef CONFIG_NET_MULTI
+	NetRestarted = 0;
+	NetDevExists = 0;
+#endif
+
+	NetArpWaitPacketMAC	= NULL;
+	NetArpWaitTxPacket	= NULL;
+	NetArpWaitPacketIP	= 0;
+	NetArpWaitReplyIP	= 0;
+	NetArpWaitTxPacket	= NULL;
+
+	if (!NetTxPacket) {
+		int	i;
+		BUFFER_ELEM *buf;
+		/*
+		 *	Setup packet buffers, aligned correctly.
+		 */
+		buf = rt2880_free_buf_entry_dequeue(&rt2880_free_buf_list);
+		NetTxPacket = buf->pbuf;
+
+		debug("\n NetTxPacket = 0x%08X \n",NetTxPacket);
+		for (i = 0; i < NUM_RX_DESC; i++) {
+
+			buf = rt2880_free_buf_entry_dequeue(&rt2880_free_buf_list);
+			if(buf == NULL)
+			{
+				printf("\n Packet Buffer is empty ! \n");
+
+				return (-1);
+			}
+			NetRxPackets[i] = buf->pbuf;
+		}
+	}
+	/*
+	NetTxPacket = KSEG1ADDR(NetTxPacket);
+
+	printf("\n KSEG1ADDR(NetTxPacket) = 0x%08X \n",NetTxPacket);
+	*/
+	if (!NetArpWaitTxPacket) {
+		NetArpWaitTxPacket = &NetArpWaitPacketBuf[0] + (PKTALIGN - 1);
+		NetArpWaitTxPacket -= (ulong)NetArpWaitTxPacket % PKTALIGN;
+		NetArpWaitTxPacketSize = 0;
+	}
+
+	// get MAC address
+#ifdef CONFIG_NET_MULTI
+	memcpy (NetOurEther, eth_get_dev()->enetaddr, 6);
+#else
+	memcpy (NetOurEther, bd->bi_enetaddr, 6);
+#endif
+}
+
+int NetInitLocalHttpd()
+{
+	bd_t *bd = gd->bd;
+	int led_on = 0;
+	int success=0;
+
+	eth_halt();
+
+#ifdef CONFIG_NET_MULTI
+	eth_set_current();
+#endif
+
+	while(1){
+		if(!eth_init(bd)) {
+			success = 1;
+			break;
+		} else {
+			led_on = !led_on;
+			set_sys_led(led_on);
+			eth_halt();
+			milisecdelay(1000);
+		}
+		if(ctrlc()) {
+			break;
+		}
+	}
+
+	if(!success){
+		eth_halt();
+		printf("## Error: couldn't initialize eth (user canceled)!\n\n");
+		set_sys_led(0);
+		return(-1);
+	}
+
+	// get MAC address
+#ifdef CONFIG_NET_MULTI
+	memcpy (NetOurEther, eth_get_dev()->enetaddr, 6);
+#else
+	memcpy (NetOurEther, bd->bi_enetaddr, 6);
+#endif
+
+	net_state = NETLOOP_CONTINUE;
+
+	NetCopyIP(&NetOurIP, &bd->bi_ip_addr);
+	NetOurGatewayIP = getenv_IPaddr ("gatewayip");
+	NetOurSubnetMask= getenv_IPaddr ("netmask");
+#ifdef CONFIG_NET_VLAN
+	NetOurVLAN = getenv_VLAN("vlan");
+	NetOurNativeVLAN = getenv_VLAN("nvlan");
+#endif
+	NetServerIP = getenv_IPaddr ("serverip");
+
+	return 0;
+}
+
+void NetSendHttpd(char* buf, int pkt_len){
+	volatile uchar *tmpbuf = NetTxPacket;
+	int i;
+
+	/*
+	 * UIP_LLH_LEN + TCPIP_HDR_LEN(40) + DATA_LEN
+	 * 40 is the size of IP header plus TCP header.
+	 */
+	for(i = 0; i < pkt_len; i++){
+		tmpbuf[i] = buf[i];
+	}
+
+	//printf("\nData sent!uip_len:%d\n", pkt_len);
+
+	eth_send(NetTxPacket, pkt_len);
+}
+#endif

@@ -17,7 +17,8 @@ extern void udc_disconnect(void);
 		defined(CONFIG_CMDLINE_TAG) || \
 		defined(CONFIG_INITRD_TAG) || \
 		defined(CONFIG_SERIAL_TAG) || \
-		defined(CONFIG_REVISION_TAG)
+		defined(CONFIG_REVISION_TAG) || \
+		defined(CONFIG_NAND_TAG)
 # define BOOTM_ENABLE_TAGS		1
 #else
 # define BOOTM_ENABLE_TAGS		0
@@ -59,6 +60,16 @@ u32 get_board_rev(void);
 static inline u32 get_board_rev(void)
 {
 	return 0;
+}
+#endif
+
+#ifdef CONFIG_NAND_TAG
+ #define BOOTM_ENABLE_NAND_TAG  1
+#else
+#define BOOTM_ENABLE_NAND_TAG	0
+static inline u32 get_board_nand(void)
+{
+	    return 0;
 }
 #endif
 

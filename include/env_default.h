@@ -71,10 +71,10 @@ const uchar default_environment[] = {
 	"ethprime="	CONFIG_ETHPRIME			"\0"
 #endif
 #ifdef	CONFIG_IPADDR
-	"ipaddr="	__stringify(CONFIG_IPADDR)	"\0"
+	"ipaddr="	CONFIG_IPADDR	"\0"
 #endif
 #ifdef	CONFIG_SERVERIP
-	"serverip="	__stringify(CONFIG_SERVERIP)	"\0"
+	"serverip="	CONFIG_SERVERIP	"\0"
 #endif
 #ifdef	CONFIG_SYS_AUTOLOAD
 	"autoload="	CONFIG_SYS_AUTOLOAD		"\0"

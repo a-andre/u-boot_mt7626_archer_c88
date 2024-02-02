@@ -36,8 +36,11 @@ int id_parse(const char *id, const char **ret_id, u8 *dev_type, u8 *dev_num);
 int find_dev_and_part(const char *id, struct mtd_device **dev,
 		      u8 *part_num, struct part_info **part);
 #endif
-
+#if defined (CONFIG_MTK_MTD_NAND)
+static int nand_dump(nand_info_t *nand, loff_t off, int only_oob, int repeat)
+#else
 static int nand_dump(nand_info_t *nand, ulong off, int only_oob, int repeat)
+#endif
 {
 	int i;
 	u_char *datbuf, *oobbuf, *p;
@@ -61,7 +64,11 @@ static int nand_dump(nand_info_t *nand, ulong off, int only_oob, int repeat)
 		ret = 1;
 		goto free_dat;
 	}
+#if defined (CONFIG_MTK_MTD_NAND)
+off &= ~((unsigned long long)(nand->writesize - 1));
+#else
 	off &= ~(nand->writesize - 1);
+#endif
 	loff_t addr = (loff_t) off;
 	struct mtd_oob_ops ops;
 	memset(&ops, 0, sizeof(ops));
@@ -69,19 +76,29 @@ static int nand_dump(nand_info_t *nand, ulong off, int only_oob, int repeat)
 	ops.oobbuf = oobbuf;
 	ops.len = nand->writesize;
 	ops.ooblen = nand->oobsize;
+#if defined (CONFIG_MTK_MTD_NAND)
+ops.mode = MTD_OPS_PLACE_OOB;
+#else
 	ops.mode = MTD_OPS_RAW;
+#endif
 	i = mtd_read_oob(nand, addr, &ops);
 	if (i < 0) {
-		printf("Error (%d) reading page %08lx\n", i, off);
+		printf("Error (%d) reading page %x\n", i, (int)off);
 		ret = 1;
 		goto free_all;
 	}
+#if defined (CONFIG_MTK_MTD_NAND)
+printf("Address %llx dump (%d):\n", off, nand->writesize);
+#else
 	printf("Page %08lx dump:\n", off);
-
+#endif
 	if (!only_oob) {
+#if defined (CONFIG_MTK_MTD_NAND)
+int j;
+#endif
 		i = nand->writesize >> 4;
 		p = datbuf;
-
+#if !defined (CONFIG_MTK_MTD_NAND)
 		while (i--) {
 			printf("\t%02x %02x %02x %02x %02x %02x %02x %02x"
 			       "  %02x %02x %02x %02x %02x %02x %02x %02x\n",
@@ -89,18 +106,34 @@ static int nand_dump(nand_info_t *nand, ulong off, int only_oob, int repeat)
 			       p[8], p[9], p[10], p[11], p[12], p[13], p[14],
 			       p[15]);
 			p += 16;
-		}
+}
+#else
+		for (j = 0; j < nand->writesize/512; j++)
+    {
+        for (i = 0; i < 512; i++)
+            printf("%02x%c", p[i], (i%32 == 31)? '\n':' ');
+        p+=512;
+        printf("\n");
 	}
-
+#endif
+}
+#if defined (CONFIG_MTK_MTD_NAND)
+printf("OOB (%d):\n",nand->oobsize);
+#else
 	puts("OOB:\n");
+#endif
 	i = nand->oobsize >> 3;
 	p = oobbuf;
+#if defined (CONFIG_MTK_MTD_NAND)
+	for (i = 0; i < nand->oobsize; i++)
+		printf("%02x%c", p[i], (i%32 == 31)? '\n':' ');
+#else
 	while (i--) {
 		printf("\t%02x %02x %02x %02x %02x %02x %02x %02x\n",
 		       p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]);
 		p += 8;
 	}
-
+#endif
 free_all:
 	free(oobbuf);
 free_dat:
@@ -462,10 +495,42 @@ static void adjust_size_for_badblocks(loff_t *size, loff_t offset, int dev)
 	}
 }
 
+int ranand_erase_write(u_char * load_addr,u_char  nand_offset,u_char size)
+{
+	nand_info_t *nand;
+	nand_erase_options_t opts;
+	int dev = nand_curr_device;
+	int ret =0;
+
+	size_t rwsize = size;
+	nand = &nand_info[dev];
+	memset(&opts, 0, sizeof(opts));
+	opts.offset = nand_offset;
+	opts.length = size;
+	opts.jffs2  = 0;
+	opts.quiet  = 0;
+	opts.spread = 1;
+
+	ret = nand_erase_opts(nand, &opts);
+	printf("%s\n", ret ? "NAND ERASE ERROR" : "NAND ERASE  OK");
+	if(ret) return 1;
+
+	//max kernel size is 64M currently
+	ret = nand_write_skip_bad(nand, nand_offset, &rwsize,
+						NULL, 0x4000000,
+						(u_char *)((int)load_addr), 0);
+	printf("%s\n", ret ? "NAND WRITE ERROR" : "NAND WRITE OK");
+	return ret;
+}
+
 static int do_nand(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 {
 	int i, ret = 0;
+#if defined (CONFIG_MTK_MTD_NAND)
+loff_t addr;
+#else
 	ulong addr;
+#endif
 	loff_t off, size, maxsize;
 	char *cmd, *s;
 	nand_info_t *nand;
@@ -632,8 +697,11 @@ static int do_nand(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	if (strncmp(cmd, "dump", 4) == 0) {
 		if (argc < 3)
 			goto usage;
-
+#if defined (CONFIG_MTK_MTD_NAND)
+		off = simple_strtoull(argv[2], NULL, 16);
+#else
 		off = (int)simple_strtoul(argv[2], NULL, 16);
+#endif
 		ret = nand_dump(nand, off, !strcmp(&cmd[4], ".oob"), repeat);
 
 		return ret == 0 ? 1 : 0;
@@ -647,9 +715,11 @@ static int do_nand(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 
 		if (argc < 4)
 			goto usage;
-
+#if defined (CONFIG_MTK_MTD_NAND)
+		addr = simple_strtoull(argv[2], NULL, 16);
+#else
 		addr = (ulong)simple_strtoul(argv[2], NULL, 16);
-
+#endif
 		read = strncmp(cmd, "read", 4) == 0; /* 1 = read, 0 = write */
 		printf("\nNAND %s: ", read ? "read" : "write");
 
@@ -690,11 +760,11 @@ static int do_nand(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 			if (read)
 				ret = nand_read_skip_bad(nand, off, &rwsize,
 							 NULL, maxsize,
-							 (u_char *)addr);
+							 (u_char *)((int)addr));
 			else
 				ret = nand_write_skip_bad(nand, off, &rwsize,
 							  NULL, maxsize,
-							  (u_char *)addr, 0);
+							  (u_char *)((int)addr), 0);
 #ifdef CONFIG_CMD_NAND_TRIMFFS
 		} else if (!strcmp(s, ".trimffs")) {
 			if (read) {
@@ -718,7 +788,7 @@ static int do_nand(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 		} else if (!strcmp(s, ".oob")) {
 			/* out-of-band data */
 			mtd_oob_ops_t ops = {
-				.oobbuf = (u8 *)addr,
+				.oobbuf = (uint8_t *)((int)addr),
 				.ooblen = rwsize,
 				.mode = MTD_OPS_RAW
 			};
@@ -767,17 +837,20 @@ static int do_nand(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 			goto usage;
 
 		while (argc > 0) {
+#if defined (CONFIG_MTK_MTD_NAND)
+addr = simple_strtoull(*argv, NULL, 16);
+#else
 			addr = simple_strtoul(*argv, NULL, 16);
-
+#endif
 			if (mtd_block_markbad(nand, addr)) {
-				printf("block 0x%08lx NOT marked "
+				printf("block 0x%x NOT marked "
 					"as bad! ERROR %d\n",
-					addr, ret);
+					(int)addr, ret);
 				ret = 1;
 			} else {
-				printf("block 0x%08lx successfully "
+				printf("block 0x%x successfully "
 					"marked as bad\n",
-					addr);
+					(int)addr);
 			}
 			--argc;
 			++argv;

@@ -132,9 +132,9 @@ int writeenv(size_t offset, u_char *buf)
 	u_char *char_ptr;
 
 	blocksize = nand_info[0].erasesize;
-	len = min(blocksize, CONFIG_ENV_SIZE);
+	len = blocksize;
 
-	while (amount_saved < CONFIG_ENV_SIZE && offset < end) {
+	while (amount_saved < blocksize && offset < end) {
 		if (nand_block_isbad(&nand_info[0], offset)) {
 			offset += blocksize;
 		} else {
@@ -146,7 +146,7 @@ int writeenv(size_t offset, u_char *buf)
 			amount_saved += len;
 		}
 	}
-	if (amount_saved != CONFIG_ENV_SIZE)
+	if (amount_saved != blocksize)
 		return 1;
 
 	return 0;
@@ -161,14 +161,26 @@ static int erase_and_write_env(const struct env_location *location,
 		u_char *env_new)
 {
 	int ret = 0;
+	int len = nand_info[0].erasesize;
+	int offset = CONFIG_ENV_OFFSET;
+	u_char *char_ptr;
+	char_ptr = (u_char *)malloc(len);
+
+	if (nand_read_skip_bad(&nand_info[0], offset,
+						   (size_t *)&len, NULL, nand_info[0].size, char_ptr))
+		return 1;
 
 	printf("Erasing %s...\n", location->name);
 	if (nand_erase_opts(&nand_info[0], &location->erase_opts))
 		return 1;
 
+	memcpy(char_ptr,env_new,CONFIG_ENV_SIZE);
+
 	printf("Writing to %s... ", location->name);
-	ret = writeenv(location->erase_opts.offset, env_new);
+
+	ret = writeenv(location->erase_opts.offset, char_ptr);
 	puts(ret ? "FAILED!\n" : "OK\n");
+	free(char_ptr);
 
 	return ret;
 }

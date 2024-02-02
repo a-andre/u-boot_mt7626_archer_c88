@@ -215,6 +215,7 @@ struct lmb;
 #define IH_TYPE_KERNEL_NOLOAD	14	/* OS Kernel Image, can run from any load address */
 #define IH_TYPE_PBLIMAGE	15	/* Freescale PBL Boot Image	*/
 #define IH_TYPE_MXSIMAGE	16	/* Freescale MXSBoot Image	*/
+#define IH_TYPE_MTKIMAGE	17	/* MediaTek BootROM Loadable Image */
 
 /*
  * Compression Types
@@ -691,6 +692,8 @@ int bootz_setup(ulong image, ulong *start, ulong *end);
 #define FIT_RAMDISK_PROP	"ramdisk"
 #define FIT_FDT_PROP		"fdt"
 #define FIT_DEFAULT_PROP	"default"
+#define FIT_OPT_PROP		"opt"
+
 
 #define FIT_MAX_HASH_LEN	20	/* max(crc32_len(4), sha1_len(20)) */
 
@@ -978,7 +981,8 @@ struct image_region *fit_region_make_list(const void *fit,
 
 static inline int fit_image_check_target_arch(const void *fdt, int node)
 {
-	return fit_image_check_arch(fdt, node, IH_ARCH_DEFAULT);
+    return (fit_image_check_arch(fdt, node, IH_ARCH_DEFAULT) \
+		   || fit_image_check_arch(fdt, node, IH_ARCH_ARM64));
 }
 
 #ifdef CONFIG_FIT_VERBOSE

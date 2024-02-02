@@ -152,7 +152,7 @@ static struct usb_hub_device *usb_hub_allocate(void)
 	if (usb_hub_index < USB_MAX_HUB)
 		return &hub_dev[usb_hub_index++];
 
-	printf("ERROR: USB_MAX_HUB (%d) reached\n", USB_MAX_HUB);
+	debug("ERROR: USB_MAX_HUB (%d) reached\n", USB_MAX_HUB);
 	return NULL;
 }
 
@@ -226,7 +226,7 @@ int hub_port_reset(struct usb_device *dev, int port,
 		debug("Maybe the USB cable is bad?\n");
 		return -1;
 	}
-
+	debug("brfore usb_clear_port_feature()\n");
 	usb_clear_port_feature(dev, port + 1, USB_PORT_FEAT_C_RESET);
 	*portstat = portstatus;
 	return 0;
@@ -238,7 +238,7 @@ void usb_hub_port_connect_change(struct usb_device *dev, int port)
 	struct usb_device *usb;
 	ALLOC_CACHE_ALIGN_BUFFER(struct usb_port_status, portsts, 1);
 	unsigned short portstatus;
-
+	debug("usb_hub_port_connect_change()\n");
 	/* Check status */
 	if (usb_get_port_status(dev, port + 1, portsts) < 0) {
 		debug("get_port_status failed\n");
@@ -266,10 +266,10 @@ void usb_hub_port_connect_change(struct usb_device *dev, int port)
 
 	/* Reset the port */
 	if (hub_port_reset(dev, port, &portstatus) < 0) {
-		printf("cannot reset port %i!?\n", port + 1);
+		debug("cannot reset port %i!?\n", port + 1);
 		return;
 	}
-
+	debug("return from hub_port_reset()\n");
 	mdelay(200);
 
 	/* Allocate a new device struct for it */
@@ -294,6 +294,7 @@ void usb_hub_port_connect_change(struct usb_device *dev, int port)
 	usb->parent = dev;
 	usb->portnr = port + 1;
 	/* Run it through the hoops (find a driver, etc) */
+	debug("brfore usb_new_device()\n");
 	if (usb_new_device(usb)) {
 		/* Woops, disable the port */
 		usb_free_device();

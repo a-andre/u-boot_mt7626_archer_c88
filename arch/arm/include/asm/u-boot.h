@@ -38,6 +38,12 @@ typedef struct bd_info {
 	ulong start;
 	ulong size;
     }			bi_dram[CONFIG_NR_DRAM_BANKS];
+#ifdef CONFIG_UIP
+	unsigned long   bi_ip_addr;     /* IP Address */
+	unsigned char	bi_enetaddr[6]; /* Ethernet adress */
+#endif
+	unsigned long	bi_flashstart;	/* start of FLASH memory */
+	unsigned long	bi_flashsize;	/* size  of FLASH memory */
 } bd_t;
 #endif
 

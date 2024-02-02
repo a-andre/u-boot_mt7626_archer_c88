@@ -30,8 +30,10 @@ static int do_version(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	return 0;
 }
 
+#ifndef CONFIG_TINY_BOOT
 U_BOOT_CMD(
 	version,	1,		1,	do_version,
 	"print monitor, compiler and linker version",
 	""
 );
+#endif

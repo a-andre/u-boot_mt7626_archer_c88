@@ -155,6 +155,11 @@ struct nand_oobfree {
 	uint32_t length;
 };
 
+#if defined (CONFIG_MTK_MTD_NAND)
+#define MTD_MAX_OOBFREE_ENTRIES 8
+#define MTD_MAX_ECCPOS_ENTRIES  64
+#endif
+
 /**
  * struct mtd_ecc_stats - error correction stats
  *

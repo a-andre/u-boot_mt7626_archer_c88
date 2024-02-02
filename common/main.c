@@ -22,6 +22,7 @@
 #include <watchdog.h>
 #include <linux/ctype.h>
 
+
 DECLARE_GLOBAL_DATA_PTR;
 
 /*
@@ -65,6 +66,13 @@ int do_mdm_init = 0;
 extern void mdm_init(void); /* defined in board.c */
 #endif
 
+#if defined(GPIO_RESET_SWITCH) && defined(GPIO_RESET_TIME_GAP_MS)
+extern void switch_reset_gpio(unsigned int gpio, unsigned int time_gap_ms);
+#ifdef SWITCH_NEED_PHY_DOWN_AFTER_GPIO_RESET
+extern void switch_phy_linkdown_all(void);
+#endif
+#endif
+
 /***************************************************************************
  * Watch for 'delay' seconds for autoboot stop or autoboot delay string.
  * returns: 0 -  no key string, allow autoboot 1 - got key string, abort
@@ -98,7 +106,7 @@ static int abortboot_keyed(int bootdelay)
 #endif
 
 #  ifdef CONFIG_AUTOBOOT_PROMPT
-	printf(CONFIG_AUTOBOOT_PROMPT);
+	printf(CONFIG_AUTOBOOT_PROMPT, bootdelay);
 #  endif
 
 #  ifdef CONFIG_AUTOBOOT_DELAY_STR
@@ -338,7 +346,7 @@ static void process_boot_delay(void)
 	setenv_ulong("bootcount", bootcount);
 	bootlimit = getenv_ulong("bootlimit", 10, 0);
 #endif /* CONFIG_BOOTCOUNT_LIMIT */
-
+	setenv("bootdelay", __stringify(CONFIG_BOOTDELAY));
 	s = getenv ("bootdelay");
 	bootdelay = s ? (int)simple_strtol(s, NULL, 10) : CONFIG_BOOTDELAY;
 
@@ -370,7 +378,21 @@ static void process_boot_delay(void)
 	}
 	else
 #endif /* CONFIG_BOOTCOUNT_LIMIT */
-		s = getenv ("bootcmd");
+#ifdef CONFIG_DUAL_IMAGE
+	char cmdString[50];
+	int tempAddr = CFG_FLASH_BASE + getBlockAddr(getCurrentFirmwareIndex());
+#ifdef NORMAL_UBOOT
+	sprintf(cmdString, "bootm 0x%x", tempAddr);
+#else
+	/* 0x80: image header的大小 */
+	sprintf(cmdString, "jmpaddr 0x%x", tempAddr + 0x80);
+#endif /* NORMAL_UBOOT */
+	setenv("bootcmd", cmdString);
+#else
+	setenv("bootcmd", CONFIG_BOOTCOMMAND);
+#endif /* CONFIG_DUAL_IMAGE */
+
+	s = getenv ("bootcmd");
 #ifdef CONFIG_OF_CONTROL
 	/* Allow the fdt to override the boot command */
 	env = fdtdec_get_config_string(gd->fdt_blob, "bootcmd");
@@ -395,6 +417,52 @@ static void process_boot_delay(void)
 #if defined(CONFIG_AUTOBOOT_KEYED) && !defined(CONFIG_AUTOBOOT_KEYED_CTRLC)
 		int prev = disable_ctrlc(1);	/* disable Control C checking */
 #endif
+#ifdef CONFIG_UIP
+#ifdef WEBFAILSAFE_RESET_BUTTON
+
+		int count = 0;
+		for (count = 0; count < WEBFAILSAFE_RESET_BUTTON_SECS; count ++)
+		{
+			if (is_reset_button_pressed())
+			{
+				printf("detect reset button pressed for %d s\n", count);
+				count ++;
+				mdelay(1000);
+			}
+			else
+			{
+				break;
+			}
+		}
+		if (count >= 5)
+		{
+			puts("\nForced to enter recovery mode.\n");
+			NetLoopHttpd();
+			return;
+		}
+#endif
+#ifdef WEBFAILSAFE_DO_LOCAL_VALIDATION
+		if(validateLocalFirmware() < 0)
+		{
+			puts("\nFirmware check failed!\nEnter recovery mode.\n");
+			NetLoopHttpd();
+			return;
+		}
+#endif
+#endif
+
+#ifdef CONFIG_DUAL_IMAGE
+    	tempAddr = CFG_FLASH_BASE + getBlockAddr(getCurrentFirmwareIndex());
+#ifdef NORMAL_UBOOT
+    	sprintf(cmdString, "bootm 0x%x", tempAddr);
+#else
+    	/* 0x80: image header的大小 */
+    	sprintf(cmdString, "jmpaddr 0x%x", tempAddr + 0x80);
+#endif /* NORMAL_UBOOT */
+        /* 重置bootcmd */
+    	setenv("bootcmd", cmdString);
+        s = getenv ("bootcmd");
+#endif /* CONFIG_DUAL_IMAGE */
 
 		run_command_list(s, -1, 0);
 
@@ -424,6 +492,23 @@ void main_loop(void)
 #ifdef CONFIG_PREBOOT
 	char *p;
 #endif
+
+#ifndef NORMAL_UBOOT
+#if defined(GPIO_RESET_SWITCH) && defined(GPIO_RESET_TIME_GAP_MS)
+	/*
+	 * Do switch gpio reset
+	 */
+	switch_reset_gpio(GPIO_RESET_SWITCH, GPIO_RESET_TIME_GAP_MS);
+#ifdef SWITCH_NEED_PHY_DOWN_AFTER_GPIO_RESET
+	/*
+	 * For some switch
+	 * all phys are linked and data can transfer by switch after gpio reset
+	 * so, we need let them all down here
+	 */
+	switch_phy_linkdown_all();
+#endif /* SWITCH_NEED_PHY_DOWN_AFTER_GPIO_RESET */
+#endif /* defined(GPIO_RESET_SWITCH) && defined(GPIO_RESET_TIME_GAP_MS) */
+#endif /* NORMAL_UBOOT */
 
 	bootstage_mark_name(BOOTSTAGE_ID_MAIN_LOOP, "main_loop");
 

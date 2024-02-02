@@ -10,6 +10,7 @@
  */
 
 #ifdef USE_HOSTCC
+#include <configs/autoconf.h>
 #include "mkimage.h"
 #include <image.h>
 #include <time.h>
@@ -24,6 +25,14 @@ DECLARE_GLOBAL_DATA_PTR;
 #include <sha1.h>
 #include <u-boot/crc.h>
 #include <u-boot/md5.h>
+#if (!defined (LEOPARD_ASIC_BOARD))&&(!defined (LEOPARD_FPGA_BOARD))
+#include <asm/arch/mt_typedefs.h>
+#endif
+
+
+#define RGU_BASE          			(0x10212000)
+#define TOPRGU_STRAP_PAR            (RGU_BASE + 0x60)
+
 
 /*****************************************************************************/
 /* New uImage format routines */
@@ -1353,8 +1362,21 @@ int fit_conf_get_node(const void *fit, const char *conf_uname)
 	if (conf_uname == NULL) {
 		/* get configuration unit name from the default property */
 		debug("No configuration specified, trying default...\n");
-		conf_uname = (char *)fdt_getprop(fit, confs_noffset,
+	#if defined (MT7622_ASIC_BOARD)
+		if (DRV_Reg32(TOPRGU_STRAP_PAR) & 2) { 
+			printf("we get 40m.dtb !!!\n");
+			conf_uname = (char *)fdt_getprop(fit, confs_noffset,
+						 FIT_OPT_PROP, &len);
+		}
+		else
+	#endif
+		{
+			conf_uname = (char *)fdt_getprop(fit, confs_noffset,
 						 FIT_DEFAULT_PROP, &len);
+		}
+
+
+		
 		if (conf_uname == NULL) {
 			fit_get_debug(fit, confs_noffset, FIT_DEFAULT_PROP,
 				      len);

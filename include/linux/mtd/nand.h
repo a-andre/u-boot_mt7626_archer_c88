@@ -24,6 +24,7 @@
 #include "linux/mtd/mtd.h"
 #include "linux/mtd/bbm.h"
 
+#define CONFIG_SYS_NAND_ONFI_DETECTION
 
 struct mtd_info;
 struct nand_flash_dev;
@@ -48,6 +49,11 @@ extern void nand_wait_ready(struct mtd_info *mtd);
  */
 #define NAND_MAX_OOBSIZE	640
 #define NAND_MAX_PAGESIZE	8192
+
+#ifdef CONFIG_MTK_MTD_NAND
+#define NAND_MAX_SUBPAGE_SIZE       (1024)
+#define NAND_MAX_SUBPAGE_SPARE_SIZE (128)
+#endif
 
 /*
  * Constants for hardware specific CLE/ALE/NCE function
@@ -400,6 +406,10 @@ struct nand_buffers {
 	uint8_t	ecccode[ALIGN(NAND_MAX_OOBSIZE, ARCH_DMA_MINALIGN)];
 	uint8_t databuf[ALIGN(NAND_MAX_PAGESIZE + NAND_MAX_OOBSIZE,
 			      ARCH_DMA_MINALIGN)];
+#ifdef CONFIG_MTK_MTD_NAND
+	uint8_t subpagebuf[NAND_MAX_SUBPAGE_SIZE + NAND_MAX_SUBPAGE_SPARE_SIZE];
+#endif
+
 };
 
 /**
@@ -521,6 +531,20 @@ struct nand_chip {
 	int (*onfi_get_features)(struct mtd_info *mtd, struct nand_chip *chip,
 			int feature_addr, uint8_t *subfeature_para);
 
+#ifdef CONFIG_MTK_MTD_NAND
+	int     (*read_page)(struct mtd_info *mtd, struct nand_chip *chip, u8 *buf, int page);
+	int     (*erase)(struct mtd_info *mtd, int page);
+	
+	/*
+	 * sub-page read related members
+	 */
+
+	// subpage read will be triggered if this API is hooked by driver, otherwise normal page read will only be triggered
+	int     (*read_subpage)(struct mtd_info *mtd, struct nand_chip *chip, u8 *buf, int page, int subpage_begin, int subpage_cnt);
+	//                         // indicating subpage size, must be assigned in driver's initialization stage
+	int     subpage_size;
+#endif
+
 	int chip_delay;
 	unsigned int options;
 	unsigned int bbt_options;
@@ -577,6 +601,9 @@ struct nand_chip {
 #define NAND_MFR_AMD		0x01
 #define NAND_MFR_MACRONIX	0xc2
 #define NAND_MFR_EON		0x92
+#define NAND_MFR_WINBOND	0xef
+#define NAND_MFR_GD		    0xc8
+#define NAND_MFR_ETRON		0xd5
 
 /**
  * struct nand_flash_dev - NAND Flash Device ID Structure

@@ -624,6 +624,9 @@ static int do_bootm_states(cmd_tbl_t *cmdtp, int flag, int argc,
 	ulong iflag = 0;
 	int ret = 0, need_boot_fn;
 
+    // Iverson debug
+    printf("bootm flag=%x, states=%x\n", flag, states);
+
 	images->state |= states;
 
 	/*
@@ -770,9 +773,171 @@ static int do_bootm_subcommand(cmd_tbl_t *cmdtp, int flag, int argc,
 	return ret;
 }
 
+#define MAGIC_LEN			20
+#define RSA_SIGN_LEN		128
+#define FWID_FL_MASK_LEN	12
+#define MAX_HWID_NUM		16
+#define CRC_LEN				16
+#define FW_ID_LEN			16
+#define FW_DESC_LEN	 		12
+#define BOOTIMG_SIZE		0xF000
+#define TP_HEAD_SIZE		0x200
+#define MAX_FIRMWARE_SIZE	0x200000
+#define MD5_DIGEST_LEN		16		/* length of MD5 digest result */
+#define HW_ID_LEN 			16
+
+
+/* TP_HEAD */
+typedef struct _TP_HEAD
+{
+	unsigned int tagVersion;
+	unsigned char magicNum[MAGIC_LEN];
+	unsigned int loadAddr;
+	unsigned int entryPoint;
+	unsigned short vendorId;
+	unsigned short zoneCode;
+/*	unsigned int prodid;
+	unsigned int subVersion;
+	unsigned int mainVersion;
+	unsigned int languageId;
+	unsigned int countryId;
+	unsigned int oemId;*/
+	unsigned int partitionNum;
+	unsigned int facBootOffset;
+	unsigned int facBootLen;
+	unsigned int facInfoOffset;
+	unsigned int facInfoLen;
+	unsigned int radioOffset;
+	unsigned int radioLen;
+	unsigned int configOffset;
+	unsigned int configLen;
+	unsigned int ubootOffset;
+	unsigned int ubootLen;
+	unsigned int tpHeadOffset;
+	unsigned int tpHeadLen;
+	unsigned int firmwareOffset;
+	unsigned int firmwareLen;
+	unsigned int miniFsOffset;
+	unsigned int miniFsLen;
+	unsigned int jffs2Offset;
+	unsigned int jffs2Len;
+	unsigned char factoryInfoCRC[CRC_LEN];
+	unsigned char radioCRC[CRC_LEN];
+	unsigned char ubootCRC[CRC_LEN];
+	unsigned char firmwareCRC[CRC_LEN];
+	unsigned char FwID[FW_ID_LEN];
+	unsigned char FwDes[FW_DESC_LEN];
+	unsigned int FwIDBLNum;
+	unsigned char FwIDBL[0][FW_ID_LEN];
+}TP_HEAD;
+
+
 /*******************************************************************/
 /* bootm - boot application image from image in memory */
 /*******************************************************************/
+#if 1
+#include "image_header.h"
+#define CONFIG_FIRMWARE_LOAD_ADDR	0x40205000
+
+int do_bootm(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+{
+	typedef void __noreturn (*image_entry_noargs_t)(void);
+	image_entry_noargs_t image_entry = NULL;
+
+	ulong addr = 0;
+	printf("boot from %s %s\n", argv[0], argv[1]);
+	
+	if (argc < 2)
+	{
+		addr = load_addr;
+	}
+	else
+	{
+		addr = simple_strtoul(argv[1], NULL, 16);
+	}
+
+	printf ("## Booting image at %08lx ...\n\n", addr);
+
+	IMG_HEADER *pHeader = addr;
+	char *imgFileEnc = addr + ntohl(pHeader->file[IMG_FILE_VXIMG_INDEX].fileOffset);
+	ulong imgAddr = CONFIG_FIRMWARE_LOAD_ADDR;
+	int retval = 0;
+	int destLen = 0;
+				
+	if (ntohl(pHeader->magic) != IMG_MAGIC)
+	{
+		printf ("Not tp Image, abort.\n");
+		return 1;
+	}
+	
+	printf ("tp Image.\n");
+	printf("imgFileEnc=0x%x, offset=0x%x, len=0x%x\n", imgFileEnc, 
+			ntohl(pHeader->file[IMG_FILE_VXIMG_INDEX].fileOffset), 
+			ntohl(pHeader->file[IMG_FILE_VXIMG_INDEX].fileSize));
+
+	retval = lzmaBuffToBuffDecompress((unsigned char *)imgAddr, &destLen, imgFileEnc,
+					ntohl(pHeader->file[IMG_FILE_VXIMG_INDEX].fileSize));
+
+	if (retval != SZ_OK)
+	{
+		printf ("LZMA ERROR %d - must RESET board to recover\n", retval);
+		udelay(100000);
+		do_reset (cmdtp, flag, argc, argv);
+		return 1;
+	}
+
+	flush_cache(imgAddr, destLen);
+	cleanup_before_linux();
+
+	image_entry = (image_entry_noargs_t)imgAddr;
+	image_entry();
+
+	return 0;
+}
+#else
+int do_bootm(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+{
+	typedef void __noreturn (*image_entry_noargs_t)(void);
+	image_entry_noargs_t image_entry = NULL;
+	TP_HEAD *pTpHeader = NULL;
+	unsigned char *imgFileEnc = NULL;
+	ulong imgAddr = 0x40205000;
+	SizeT destLen = 0;
+	int retval = 0;
+	ulong addr = 0;
+
+	if (argc < 2)
+	{
+		addr = load_addr;
+	}
+	else
+	{
+		addr = simple_strtoul(argv[1], NULL, 16);
+	}
+
+	printf ("## Booting image at %08lx ...\n\n", addr);
+
+	pTpHeader = (TP_HEAD *)(addr - TP_HEAD_SIZE);
+	imgFileEnc = (unsigned char *)addr;
+	retval = lzmaBuffToBuffDecompress((unsigned char *)imgAddr, &destLen, imgFileEnc,
+					ntohl(pTpHeader->firmwareLen));
+
+	if (retval != SZ_OK)
+	{
+		printf ("LZMA ERROR %d - must RESET board to recover\n", retval);
+		udelay(100000);
+		do_reset (cmdtp, flag, argc, argv);
+		return 1;
+	}
+
+	flush_cache(imgAddr, destLen);
+	cleanup_before_linux();
+
+	image_entry = (image_entry_noargs_t)imgAddr;
+	image_entry();
+
+	return 0;
+}
 
 int do_bootm(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 {
@@ -822,7 +987,7 @@ int do_bootm(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 		BOOTM_STATE_OS_PREP | BOOTM_STATE_OS_FAKE_GO |
 		BOOTM_STATE_OS_GO, &images, 1);
 }
-
+#endif
 int bootm_maybe_autostart(cmd_tbl_t *cmdtp, const char *cmd)
 {
 	const char *ep = getenv("autostart");
@@ -1739,15 +1904,15 @@ void do_bootvx_fdt(bootm_headers_t *images)
 	bootstage_mark(BOOTSTAGE_ID_RUN_OS);
 
 #if defined(CONFIG_OF_LIBFDT)
-	printf("## Starting vxWorks at 0x%08lx, device tree at 0x%08lx ...\n",
+	printf("## Starting tp at 0x%08lx, device tree at 0x%08lx ...\n",
 	       (ulong)images->ep, (ulong)*of_flat_tree);
 #else
-	printf("## Starting vxWorks at 0x%08lx\n", (ulong)images->ep);
+	printf("## Starting tp at 0x%08lx\n", (ulong)images->ep);
 #endif
 
 	boot_jump_vxworks(images);
 
-	puts("## vxWorks terminated\n");
+	puts("## tp terminated\n");
 }
 
 static int do_bootm_vxworks(int flag, int argc, char * const argv[],
@@ -1758,7 +1923,7 @@ static int do_bootm_vxworks(int flag, int argc, char * const argv[],
 
 #if defined(CONFIG_FIT)
 	if (!images->legacy_hdr_valid) {
-		fit_unsupported_reset("VxWorks");
+		fit_unsupported_reset("tp");
 		return 1;
 	}
 #endif
@@ -1929,3 +2094,142 @@ U_BOOT_CMD(
 	"boot Linux zImage image from memory", bootz_help_text
 );
 #endif	/* CONFIG_CMD_BOOTZ */
+
+#ifdef CONFIG_CMD_BOOTI
+/* See Documentation/arm64/booting.txt in the Linux kernel */
+struct Image_header {
+	uint32_t	code0;		/* Executable code */
+	uint32_t	code1;		/* Executable code */
+	uint64_t	text_offset;	/* Image load offset */
+	uint64_t	res0;		/* reserved */
+	uint64_t	res1;		/* reserved */
+	uint64_t	res2;		/* reserved */
+	uint64_t	res3;		/* reserved */
+	uint64_t	res4;		/* reserved */
+	uint32_t	magic;		/* Magic number */
+	uint32_t	res5;
+};
+
+#define LINUX_ARM64_IMAGE_MAGIC	0x644d5241
+/* XXX: Hack 16MB image size for now */
+#define HACK_ARM64_IMAGE_SIZE	(16 << 20)
+
+static int booti_setup(bootm_headers_t *images)
+{
+	struct Image_header *ih;
+	uint64_t dst;
+
+	ih = (struct Image_header *)map_sysmem(images->ep, 0);
+
+	if (ih->magic != LINUX_ARM64_IMAGE_MAGIC) {
+		puts("Bad Linux ARM64 Image magic!\n");
+		return 1;
+	}
+
+	/*
+	 * If we are not at the correct run-time location, set the new
+	 * correct location and then move the image there.
+	 */
+	dst = gd->bd->bi_dram[0].start + ih->text_offset;
+	if (images->ep != dst) {
+		void *src;
+
+		debug("Moving Image from 0x%lx to 0x%llx\n", images->ep, dst);
+
+		src = (void *)images->ep;
+		images->ep = dst;
+		memmove((void *)dst, src, HACK_ARM64_IMAGE_SIZE);
+	}
+
+	return 0;
+}
+
+/*
+ * Image booting support
+ */
+static int booti_start(cmd_tbl_t *cmdtp, int flag, int argc,
+			char * const argv[], bootm_headers_t *images)
+{
+	int ret;
+
+	ret = do_bootm_states(cmdtp, flag, argc, argv, BOOTM_STATE_START,
+			      images, 1);
+
+	/* Setup Linux kernel Image entry point */
+	if (!argc) {
+		images->ep = load_addr;
+		debug("*  kernel: default image load address = 0x%08lx\n",
+				load_addr);
+	} else {
+		images->ep = simple_strtoul(argv[0], NULL, 16);
+		debug("*  kernel: cmdline image address = 0x%08lx\n",
+			images->ep);
+	}
+
+	ret = booti_setup(images);
+	if (ret != 0)
+		return 1;
+
+	lmb_reserve(&images->lmb, images->ep, HACK_ARM64_IMAGE_SIZE);
+
+	/*
+	 * Handle the BOOTM_STATE_FINDOTHER state ourselves as we do not
+	 * have a header that provide this informaiton.
+	 */
+	if (bootm_find_ramdisk(flag, argc, argv))
+		return 1;
+
+#if defined(CONFIG_OF_LIBFDT)
+	if (bootm_find_fdt(flag, argc, argv))
+		return 1;
+#endif
+
+	return 0;
+}
+
+int do_booti(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+{
+	int ret;
+
+	/* Consume 'booti' */
+	argc--; argv++;
+
+	if (booti_start(cmdtp, flag, argc, argv, &images))
+		return 1;
+
+	/*
+	 * We are doing the BOOTM_STATE_LOADOS state ourselves, so must
+	 * disable interrupts ourselves
+	 */
+	bootm_disable_interrupts();
+
+	images.os.os = IH_OS_LINUX;
+	ret = do_bootm_states(cmdtp, flag, argc, argv,
+			      BOOTM_STATE_OS_PREP | BOOTM_STATE_OS_FAKE_GO |
+			      BOOTM_STATE_OS_GO,
+			      &images, 1);
+
+	return ret;
+}
+
+#ifdef CONFIG_SYS_LONGHELP
+static char booti_help_text[] =
+	"[addr [initrd[:size]] [fdt]]\n"
+	"    - boot Linux Image stored in memory\n"
+	"\tThe argument 'initrd' is optional and specifies the address\n"
+	"\tof the initrd in memory. The optional argument ':size' allows\n"
+	"\tspecifying the size of RAW initrd.\n"
+#if defined(CONFIG_OF_LIBFDT)
+	"\tSince booting a Linux kernelrequires a flat device-tree\n"
+	"\ta third argument is required which is the address of the\n"
+	"\tdevice-tree blob. To boot that kernel without an initrd image,\n"
+	"\tuse a '-' for the second argument.\n"
+#endif
+	"";
+#endif
+
+U_BOOT_CMD(
+	booti,	CONFIG_SYS_MAXARGS,	1,	do_booti,
+	"boot arm64 Linux Image image from memory", booti_help_text
+);
+#endif	/* CONFIG_CMD_BOOTI */

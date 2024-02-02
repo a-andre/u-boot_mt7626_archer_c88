@@ -21,3 +21,4 @@ obj-$(CONFIG_PDSP188x) += pdsp188x.o
 obj-$(CONFIG_STATUS_LED) += status_led.o
 obj-$(CONFIG_TWL4030_LED) += twl4030_led.o
 obj-$(CONFIG_FSL_IFC) += fsl_ifc.o
+obj-y += mediatek/

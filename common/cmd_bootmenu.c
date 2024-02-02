@@ -41,7 +41,18 @@ struct bootmenu_data {
 
 enum bootmenu_key {
 	KEY_NONE = 0,
-	KEY_UP,
+	KEY_1,
+	KEY_2,
+	KEY_3,
+	KEY_4,
+	KEY_5,
+	KEY_6,
+	KEY_7,
+	KEY_8,
+	KEY_9,
+	KEY_a,
+	KEY_b,
+	KEY_UP = 20,
 	KEY_DOWN,
 	KEY_SELECT,
 };
@@ -99,20 +110,31 @@ static void bootmenu_autoboot_loop(struct bootmenu_data *menu,
 
 			menu->delay = -1;
 			c = getc();
-
-			switch (c) {
-			case '\e':
-				*esc = 1;
-				*key = KEY_NONE;
-				break;
-			case '\r':
-				*key = KEY_SELECT;
-				break;
-			default:
-				*key = KEY_NONE;
-				break;
+			/* ANSI '1~9' -  was pressed */
+			if (c <= '9' && c >= '1' )
+			{
+				*key = c-48; /*ANSI to num*/
 			}
-
+			/* ANSI 'a~b' -  was pressed */
+			else if (c <= 'b' && c >= 'a' )
+			{
+				*key = c-87;
+			}
+			else
+			{
+				switch (c) {
+				case '\e':
+					*esc = 1;
+					*key = KEY_NONE;
+					break;
+				case '\r':
+					*key = KEY_SELECT;
+					break;
+				default:
+					*key = KEY_NONE;
+					break;
+				}
+			}
 			break;
 		}
 
@@ -141,7 +163,7 @@ static void bootmenu_loop(struct bootmenu_data *menu,
 	}
 
 	c = getc();
-
+	
 	switch (*esc) {
 	case 0:
 		/* First char of ANSI escape sequence '\e' */
@@ -183,6 +205,17 @@ static void bootmenu_loop(struct bootmenu_data *menu,
 		break;
 	}
 
+	/* ANSI '1~9' - was pressed */
+	if (c <= '9' && c >= '1' )
+	{
+		*key = c-48;
+	}
+	/* ANSI 'a~b' -  was pressed */
+	if (c <= 'b' && c >= 'a' )
+	{
+		*key = c-87;
+	}
+
 	/* enter key was pressed */
 	if (c == '\r')
 		*key = KEY_SELECT;
@@ -205,6 +238,13 @@ static char *bootmenu_choice_entry(void *data)
 			bootmenu_loop(menu, &key, &esc);
 		}
 
+		if (key <= KEY_b && key >= KEY_1)
+		{
+			menu->active = key-1;
+			return NULL;
+		}
+		else
+		{
 		switch (key) {
 		case KEY_UP:
 			if (menu->active > 0)
@@ -223,6 +263,7 @@ static char *bootmenu_choice_entry(void *data)
 			return iter->key;
 		default:
 			break;
+		}
 		}
 	}
 
@@ -262,7 +303,11 @@ static struct bootmenu_data *bootmenu_create(int delay)
 		return NULL;
 
 	menu->delay = delay;
+#if defined(CONFIG_MENU_ACTIVE_ENTRY)
+    menu->active = CONFIG_MENU_ACTIVE_ENTRY;
+#else
 	menu->active = 0;
+#endif
 	menu->first = NULL;
 
 	while ((option = bootmenu_getoption(i))) {
@@ -399,7 +444,7 @@ static void bootmenu_show(int delay)
 	}
 
 	/* Default menu entry is always first */
-	menu_default_set(menu, "0");
+	menu_default_set(menu, "3");
 
 	puts(ANSI_CURSOR_HIDE);
 	puts(ANSI_CLEAR_CONSOLE);
@@ -448,7 +493,19 @@ void menu_display_statusline(struct menu *m)
 	printf(ANSI_CURSOR_POSITION, 1, 1);
 	puts(ANSI_CLEAR_LINE);
 	printf(ANSI_CURSOR_POSITION, 2, 1);
+#if defined(ON_BOARD_SPI_NOR_FLASH_COMPONENT)
+	puts("  *** U-Boot SPI NOR ***");
+#elif defined(ON_BOARD_NAND_FLASH_COMPONENT)
+	puts("  *** U-Boot NAND ***");
+#elif defined(ON_BOARD_SPI_NAND_FLASH_COMPONENT)
+	puts("  *** U-Boot SPI NAND ***");
+#elif defined(ON_BOARD_EMMC_COMPONENT)
+	puts("  *** U-Boot EMMC ***");
+#elif defined(OFF_BOARD_SD_CARD_COMPONENT)
+	puts("  *** U-Boot SD CARD ***");
+#else
 	puts("  *** U-Boot Boot Menu ***");
+#endif
 	puts(ANSI_CLEAR_LINE_TO_END);
 	printf(ANSI_CURSOR_POSITION, 3, 1);
 	puts(ANSI_CLEAR_LINE);
@@ -457,7 +514,11 @@ void menu_display_statusline(struct menu *m)
 	printf(ANSI_CURSOR_POSITION, menu->count + 5, 1);
 	puts(ANSI_CLEAR_LINE);
 	printf(ANSI_CURSOR_POSITION, menu->count + 6, 1);
-	puts("  Press UP/DOWN to move, ENTER to select");
+	if( menu->count < 10)
+	printf("  Press UP/DOWN to move or Press 1~%d to choose, ENTER to select", menu->count - 1);
+	else
+	printf("  Press UP/DOWN to move or Press 1~9,a~%c to choose, ENTER to select", menu->count - 1 - 10 + 'a');
+
 	puts(ANSI_CLEAR_LINE_TO_END);
 	printf(ANSI_CURSOR_POSITION, menu->count + 7, 1);
 	puts(ANSI_CLEAR_LINE);

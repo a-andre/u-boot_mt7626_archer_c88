@@ -39,13 +39,23 @@
 #include <logbuff.h>
 #include <asm/sections.h>
 
+#if (!defined (LEOPARD_ASIC_BOARD))&&(!defined (LEOPARD_FPGA_BOARD))
+#include <asm/arch/mt_typedefs.h>
+#endif
+
 #ifdef CONFIG_BITBANGMII
 #include <miiphy.h>
+#endif
+
+#if defined(CONFIG_CMD_NOR)
+#include "../../../drivers/flash/mtk_nor.h"
 #endif
 
 DECLARE_GLOBAL_DATA_PTR;
 
 ulong monitor_flash_len;
+
+extern int NetUipLoop;
 
 #ifdef CONFIG_HAS_DATAFLASH
 extern int  AT91F_DataflashInit(void);
@@ -505,7 +515,21 @@ static void display_fdt_model(const void *blob)
  *
  ************************************************************************
  */
+#if (!defined (LEOPARD_ASIC_BOARD))&&(!defined (LEOPARD_FPGA_BOARD))
+#define MCUSYS_CFGREG_BASE           0x10200000
+#define L2C_SIZE_CFG_OFF 5
 
+/* config SRAM back from L2 cache for DA relocation */
+void config_shared_SRAM_size(void)
+{
+        volatile unsigned int cache_cfg;
+        /* set L2C size to 512KB */
+        cache_cfg = DRV_Reg(MCUSYS_CFGREG_BASE);
+        cache_cfg &= (~0x7) << L2C_SIZE_CFG_OFF;
+        cache_cfg |= 0x3 << L2C_SIZE_CFG_OFF;
+        DRV_WriteReg(MCUSYS_CFGREG_BASE, cache_cfg);
+}
+#endif
 void board_init_r(gd_t *id, ulong dest_addr)
 {
 	ulong malloc_start;
@@ -517,7 +541,10 @@ void board_init_r(gd_t *id, ulong dest_addr)
 	bootstage_mark_name(BOOTSTAGE_ID_START_UBOOT_R, "board_init_r");
 
 	monitor_flash_len = (ulong)&__rel_dyn_end - (ulong)_start;
-
+#if (!defined (LEOPARD_ASIC_BOARD))&&(!defined (LEOPARD_FPGA_BOARD))
+	/* config SRAM back from L2 cache for DA relocation */
+	config_shared_SRAM_size();
+#endif
 	/* Enable caches */
 	enable_caches();
 
@@ -584,6 +611,11 @@ void board_init_r(gd_t *id, ulong dest_addr)
 	nand_init();		/* go init the NAND */
 #endif
 
+#if defined(CONFIG_CMD_NOR)
+	puts("NOR:  ");
+	mtk_nor_init();		/* go init the NOR */
+#endif
+
 #if defined(CONFIG_CMD_ONENAND)
 	onenand_init();
 #endif
@@ -603,6 +635,12 @@ void board_init_r(gd_t *id, ulong dest_addr)
 		env_relocate();
 	else
 		set_default_env(NULL);
+
+	if (strcmp("yes", getenv("invaild_env")) == 0)
+	{
+		set_default_env("### invaild_env is yes ###\n");
+		saveenv();
+	}
 
 #if defined(CONFIG_CMD_PCI) || defined(CONFIG_PCI)
 	arm_pci_init();
@@ -655,6 +693,7 @@ void board_init_r(gd_t *id, ulong dest_addr)
 #if defined(CONFIG_CMD_NET)
 	puts("Net:   ");
 	eth_initialize(gd->bd);
+	printf("Uip activated\n");
 #if defined(CONFIG_RESET_PHY_R)
 	debug("Reset Ethernet PHY\n");
 	reset_phy();

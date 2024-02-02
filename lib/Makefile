@@ -12,6 +12,10 @@ obj-$(CONFIG_LZMA) += lzma/
 obj-$(CONFIG_LZO) += lzo/
 obj-$(CONFIG_ZLIB) += zlib/
 obj-$(CONFIG_TIZEN) += tizen/
+obj-$(CONFIG_UIP) += lib_uip/
+obj-$(CONFIG_UIP) += lib_verify/
+obj-$(CONFIG_FLASH_LAYOUT) += flash_layout/
+obj-$(CONFIG_DUAL_IMAGE) += dual_image/
 
 obj-$(CONFIG_AES) += aes.o
 obj-$(CONFIG_BZIP2) += bzlib.o
@@ -45,6 +49,7 @@ endif
 ifdef CONFIG_SPL_BUILD
 obj-$(CONFIG_SPL_YMODEM_SUPPORT) += crc16.o
 obj-$(CONFIG_SPL_NET_SUPPORT) += net_utils.o
+obj-$(CONFIG_SPL_LZMA) += lzma/
 endif
 obj-$(CONFIG_ADDR_MAP) += addr_map.o
 obj-y += hashtable.o

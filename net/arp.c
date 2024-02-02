@@ -27,7 +27,9 @@
 #endif
 
 IPaddr_t	NetArpWaitPacketIP;
+#ifndef CONFIG_UIP
 static IPaddr_t	NetArpWaitReplyIP;
+#endif
 /* MAC address of waiting packet's destination */
 uchar	       *NetArpWaitPacketMAC;
 int		NetArpWaitTxPacketSize;
@@ -36,6 +38,13 @@ int		NetArpWaitTry;
 
 static uchar   *NetArpTxPacket;	/* THE ARP transmit packet */
 static uchar	NetArpPacketBuf[PKTSIZE_ALIGN + PKTALIGN];
+#ifdef CONFIG_UIP
+IPaddr_t	NetArpWaitReplyIP;
+uchar          *NetArpWaitTxPacket;	/* THE transmit packet */
+uchar 		NetArpWaitPacketBuf[PKTSIZE_ALIGN + PKTALIGN];
+#endif
+
+
 
 void ArpInit(void)
 {

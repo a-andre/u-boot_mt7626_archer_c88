@@ -14,6 +14,10 @@
 #include <asm/unaligned.h>
 #include <part.h>
 #include <usb.h>
+#include <fat.h>
+
+extern long do_fat_read(const char *, void *, unsigned long, int);
+extern int do_fat_fsload(cmd_tbl_t *, int, int, char * const []);
 
 #ifdef CONFIG_USB_STORAGE
 static int usb_stor_curr_dev = -1; /* current device */
@@ -440,6 +444,7 @@ static int do_usb(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	int i;
 	struct usb_device *dev = NULL;
 	extern char usb_started;
+	unsigned long addr;
 #ifdef CONFIG_USB_STORAGE
 	block_dev_desc_t *stor_dev;
 #endif
@@ -455,16 +460,71 @@ static int do_usb(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 		if (usb_init() >= 0) {
 #ifdef CONFIG_USB_STORAGE
 			/* try to recognize storage devices immediately */
+			printf("CONFIG_USB_STORAGE=y\n");
 			usb_stor_curr_dev = usb_stor_scan(1);
 #endif
 #ifdef CONFIG_USB_HOST_ETHER
+			printf("CONFIG_USB_HOST_ETHER=y\n");
 			/* try to recognize ethernet devices immediately */
 			usb_ether_curr_dev = usb_host_eth_scan(1);
 #endif
-#ifdef CONFIG_USB_KEYBOARD
-			drv_usb_kbd_init();
-#endif
+//#ifdef CONFIG_USB_KEYBOARD
+//			drv_usb_kbd_init();
+//#endif
 		}
+                if( usb_stor_curr_dev < 0){
+                        printf("No USB Storage found. Upgrade F/W failed.\n");
+                        return 0;
+		}
+
+		/////////////File system///
+		addr = simple_strtoul(getenv("loadaddr"), NULL, 16);
+		printf("loadaddr=%x\n", addr);
+		cmd_tbl_t *bcmd; 
+		
+		bcmd = find_cmd("fatload");
+		if (!bcmd) {
+			printf( "Error - 'fatload' command not present.\n");
+			//usb_stop();
+			//return 1;
+		}
+		disk_partition_t info;
+		int devno = 0;
+		int partno;
+
+		char dev[7];
+		char *nxri="root_uImage";
+		char addr_str[16];
+		char * const argv[6] = { "fatload", "usb", dev, addr_str, nxri, NULL };
+//		for (devno = 0; devno < 3; devno++) {
+			stor_dev = usb_stor_get_dev(devno);
+			if (stor_dev->type == DEV_TYPE_UNKNOWN) {
+				printf("dev %d doesn't exist", devno);
+		}
+//		}
+		/* Detect partition */
+		for (partno = -1, i = 0; i < 6; i++) {
+			if (get_partition_info(stor_dev, i, &info) == 0) {
+				if (fat_register_device(stor_dev, i) == 0) {
+					partno = i;
+					break;
+				}
+			}
+		}
+		if (partno != -1) {
+			printf("Use devno=%d, partno=%d for fatload\n", devno, partno);
+		} else {
+			printf("Unable to use devno=%d for fatload\n", devno);
+		}
+	
+		sprintf(dev, "%d:%d", devno, partno); //0,1 for old version
+		sprintf(addr_str, "%lx", addr);
+		if (do_fat_fsload(bcmd, 0, 5, argv) != 0) {
+			//usb_stop();
+			return 1;
+		}
+	
+		///////////////////////
 		return 0;
 	}
 	if (strncmp(argv[1], "stop", 4) == 0) {

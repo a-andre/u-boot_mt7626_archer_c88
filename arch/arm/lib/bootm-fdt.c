@@ -29,7 +29,11 @@ int arch_fixup_memory_node(void *blob)
 
 	for (bank = 0; bank < CONFIG_NR_DRAM_BANKS; bank++) {
 		start[bank] = bd->bi_dram[bank].start;
+	#if (defined (MT7622_ASIC_BOARD)) || (defined (MT7622_FPGA_BOARD)) //mtk40224  return 16M dram to kernel , dram_init() furnction borrow 16M in MT7622_evb.c
+		size[bank] = bd->bi_dram[bank].size+SZ_16M;
+	#else
 		size[bank] = bd->bi_dram[bank].size;
+	#endif
 	}
 
 	return fdt_fixup_memory_banks(blob, start, size, CONFIG_NR_DRAM_BANKS);

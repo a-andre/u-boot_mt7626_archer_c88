@@ -14,14 +14,25 @@
  * SPDX-License-Identifier:	GPL-2.0+
  */
 
-#include <common.h>
 #include <asm/byteorder.h>
-#include <usb.h>
-#include <malloc.h>
 #include <asm/cache.h>
-#include <asm-generic/errno.h>
+#include <asm/errno.h>
+
+#include <compiler.h>
+#include <common.h>
+#include <malloc.h>
+
+#include <usb.h>
 
 #include "xhci.h"
+
+//#define XHCI_MEM_DEBUG
+
+#ifdef	XHCI_MEM_DEBUG
+#define	XHCI_MEM_PRINTF(fmt,args...)	printf (fmt ,##args)
+#else
+#define XHCI_MEM_PRINTF(fmt,args...)
+#endif
 
 #define CACHELINE_SIZE		CONFIG_SYS_CACHELINE_SIZE
 /**
@@ -63,10 +74,13 @@ void xhci_inval_cache(uint32_t addr, u32 len)
  */
 static void xhci_segment_free(struct xhci_segment *seg)
 {
-	free(seg->trbs);
-	seg->trbs = NULL;
-
-	free(seg);
+	if (seg) {
+		if (seg->trbs) {
+			free(seg->trbs);
+			seg->trbs = NULL;
+		}
+		free(seg);
+	}
 }
 
 /**
@@ -102,8 +116,13 @@ static void xhci_ring_free(struct xhci_ring *ring)
  */
 static void xhci_free_container_ctx(struct xhci_container_ctx *ctx)
 {
-	free(ctx->bytes);
-	free(ctx);
+	if (ctx) {
+		if (ctx->bytes) {
+
+			free(ctx->bytes);
+		}
+		free(ctx);
+	}
 }
 
 /**
@@ -152,11 +171,16 @@ static void xhci_free_virt_devices(struct xhci_ctrl *ctrl)
  */
 void xhci_cleanup(struct xhci_ctrl *ctrl)
 {
-	xhci_ring_free(ctrl->event_ring);
-	xhci_ring_free(ctrl->cmd_ring);
-	xhci_free_virt_devices(ctrl);
-	free(ctrl->erst.entries);
-	free(ctrl->dcbaa);
+	if (ctrl->event_ring)
+		xhci_ring_free(ctrl->event_ring);
+	if (ctrl->cmd_ring)
+		xhci_ring_free(ctrl->cmd_ring);
+	if (ctrl)
+		xhci_free_virt_devices(ctrl);
+	if (ctrl->erst.entries)
+		free(ctrl->erst.entries);
+	if (ctrl->dcbaa)
+		free(ctrl->dcbaa);
 	memset(ctrl, '\0', sizeof(struct xhci_ctrl));
 }
 
@@ -279,7 +303,7 @@ static struct xhci_segment *xhci_segment_alloc(void)
  * @param link_trbs	flag to indicate whether to link the trbs or NOT
  * @return pointer to the newly created RING
  */
-struct xhci_ring *xhci_ring_alloc(unsigned int num_segs, bool link_trbs)
+struct xhci_ring *xhci_ring_alloc(unsigned int num_segs, int link_trbs)
 {
 	struct xhci_ring *ring;
 	struct xhci_segment *prev;
@@ -333,7 +357,6 @@ static struct xhci_container_ctx
 	ctx = (struct xhci_container_ctx *)
 		malloc(sizeof(struct xhci_container_ctx));
 	BUG_ON(!ctx);
-
 	BUG_ON((type != XHCI_CTX_TYPE_DEVICE) && (type != XHCI_CTX_TYPE_INPUT));
 	ctx->type = type;
 	ctx->size = (MAX_EP_CTX_NUM + 1) *
@@ -358,15 +381,14 @@ int xhci_alloc_virt_device(struct usb_device *udev)
 	unsigned int slot_id = udev->slot_id;
 	struct xhci_virt_device *virt_dev;
 	struct xhci_ctrl *ctrl = udev->controller;
-
+	//printf("	xhci_alloc_virt_device()\n");
 	/* Slot ID 0 is reserved */
 	if (ctrl->devs[slot_id]) {
 		printf("Virt dev for slot[%d] already allocated\n", slot_id);
 		return -EEXIST;
 	}
-
 	ctrl->devs[slot_id] = (struct xhci_virt_device *)
-					malloc(sizeof(struct xhci_virt_device));
+					xhci_malloc(sizeof(struct xhci_virt_device));
 
 	if (!ctrl->devs[slot_id]) {
 		puts("Failed to allocate virtual device\n");
@@ -400,8 +422,8 @@ int xhci_alloc_virt_device(struct usb_device *udev)
 	/* Point to output device context in dcbaa. */
 	ctrl->dcbaa->dev_context_ptrs[slot_id] = byte_64;
 
-	xhci_flush_cache((uint32_t)&ctrl->dcbaa->dev_context_ptrs[slot_id],
-							sizeof(__le64));
+	//xhci_flush_cache((uint32_t)&ctrl->dcbaa->dev_context_ptrs[slot_id],
+//							sizeof(__le64));
 	return 0;
 }
 
@@ -456,10 +478,12 @@ int xhci_mem_init(struct xhci_ctrl *ctrl, struct xhci_hccr *hccr,
 	val = xhci_readl(&hccr->cr_rtsoff);
 	val &= RTSOFF_MASK;
 	ctrl->run_regs = (struct xhci_run_regs *)((char *)hccr + val);
+	//printf("hccr =%x val=%x\n", hccr, val);
 
 	/* writting the address of ir_set structure */
 	ctrl->ir_set = &ctrl->run_regs->ir_set[0];
-
+	//printf("ctrl=%x, ctrl->ir_set=%x, &ctrl->ir_set =%x\n", ctrl, ctrl->ir_set, &ctrl->ir_set);
+	//printf("ctrl->cmd_ring=%x, &ctrl->dcbaa =%x\n", ctrl->cmd_ring, &ctrl->dcbaa);
 	/* Event ring does not maintain link TRB */
 	ctrl->event_ring = xhci_ring_alloc(ERST_NUM_SEGS, false);
 	ctrl->erst.entries = (struct xhci_erst_entry *)
@@ -478,14 +502,14 @@ int xhci_mem_init(struct xhci_ctrl *ctrl, struct xhci_hccr *hccr,
 		entry->rsvd = 0;
 		seg = seg->next;
 	}
-	xhci_flush_cache((uint32_t)ctrl->erst.entries,
-			ERST_NUM_SEGS * sizeof(struct xhci_erst_entry));
+	//xhci_flush_cache((uint32_t)ctrl->erst.entries,
+	//		ERST_NUM_SEGS * sizeof(struct xhci_erst_entry));
 
 	deq = (unsigned long)ctrl->event_ring->dequeue;
 
 	/* Update HC event ring dequeue pointer */
 	xhci_writeq(&ctrl->ir_set->erst_dequeue,
-				(u64)deq & (u64)~ERST_PTR_MASK);
+				((u64)deq & (u64)~ERST_PTR_MASK));
 
 	/* set ERST count with the number of entries in the segment table */
 	val = xhci_readl(&ctrl->ir_set->erst_size);
@@ -671,7 +695,7 @@ void xhci_setup_addressable_virt_dev(struct usb_device *udev)
 		while (hop->parent->parent)
 			hop = hop->parent;
 	port_num = hop->portnr;
-	debug("port_num = %d\n", port_num);
+	XHCI_MEM_PRINTF("port_num = %d\n", port_num);
 
 	slot_ctx->dev_info2 |=
 			cpu_to_le32(((port_num & ROOT_HUB_PORT_MASK) <<
@@ -680,25 +704,25 @@ void xhci_setup_addressable_virt_dev(struct usb_device *udev)
 	/* Step 4 - ring already allocated */
 	/* Step 5 */
 	ep0_ctx->ep_info2 = cpu_to_le32(CTRL_EP << EP_TYPE_SHIFT);
-	debug("SPEED = %d\n", udev->speed);
+	XHCI_MEM_PRINTF("SPEED = %d\n", udev->speed);
 
 	switch (udev->speed) {
 	case USB_SPEED_SUPER:
 		ep0_ctx->ep_info2 |= cpu_to_le32(((512 & MAX_PACKET_MASK) <<
 					MAX_PACKET_SHIFT));
-		debug("Setting Packet size = 512bytes\n");
+		XHCI_MEM_PRINTF("Setting Packet size = 512bytes\n");
 		break;
 	case USB_SPEED_HIGH:
 	/* USB core guesses at a 64-byte max packet first for FS devices */
 	case USB_SPEED_FULL:
 		ep0_ctx->ep_info2 |= cpu_to_le32(((64 & MAX_PACKET_MASK) <<
 					MAX_PACKET_SHIFT));
-		debug("Setting Packet size = 64bytes\n");
+		XHCI_MEM_PRINTF("Setting Packet size = 64bytes\n");
 		break;
 	case USB_SPEED_LOW:
 		ep0_ctx->ep_info2 |= cpu_to_le32(((8 & MAX_PACKET_MASK) <<
 					MAX_PACKET_SHIFT));
-		debug("Setting Packet size = 8bytes\n");
+		XHCI_MEM_PRINTF("Setting Packet size = 8bytes\n");
 		break;
 	default:
 		/* New speed? */

@@ -1,0 +1,423 @@
+mainmenu_name 'Uboot Configuration'
+
+choice 'Chip ID'	 "MT7623 MT7623 \
+                    MT7622 MT7622 \
+                    MT7626 MT7626 \
+                   " MT7622
+
+choice 'Chip Type' "FPGA FPGA \
+                    ASIC ASIC
+                   " ASIC
+
+define_bool MT7622_FPGA_BOARD n
+define_bool MT7623_FPGA_BOARD n
+define_bool MT7626_FPGA_BOARD n
+define_bool LEOPARD_FPGA_BOARD n
+
+define_bool MT7622_ASIC_BOARD n
+define_bool MT7623_ASIC_BOARD n
+define_bool MT7626_ASIC_BOARD n
+define_bool LEOPARD_ASIC_BOARD n
+
+if [ "$MT7623" = "y" ]; then
+   if [ "$FPGA" = "y" ]; then
+       define_bool MT7623_FPGA_BOARD y
+   else
+       define_bool MT7623_ASIC_BOARD y
+   fi
+fi
+
+if [ "$MT7622" = "y" ]; then
+   if [ "$FPGA" = "y" ]; then
+       define_bool MT7622_FPGA_BOARD y
+   else
+       define_bool MT7622_ASIC_BOARD y
+   fi
+fi
+
+if [ "$MT7626" = "y" ]; then
+   if [ "$FPGA" = "y" ]; then
+       define_bool MT7626_FPGA_BOARD y
+       define_bool LEOPARD_FPGA_BOARD y
+   else
+       define_bool MT7626_ASIC_BOARD y
+       define_bool LEOPARD_ASIC_BOARD y
+   fi
+fi
+
+#########################################################################################3
+# MT7623
+#########################################################################################3
+if [ "$MT7623_FPGA_BOARD" = "y" -o "$MT7623_ASIC_BOARD" = "y" ]; then
+
+#-----------------------
+# MT7623 FLASH
+#-----------------------
+choice 'Flash Type' "NAND ON_BOARD_NAND_FLASH_COMPONENT \
+                     eMMC ON_BOARD_EMMC_COMPONENT \
+                     SD OFF_BOARD_SD_CARD_COMPONENT
+		    " eMMC
+
+if [ "$ON_BOARD_NAND_FLASH_COMPONENT" = "y" ]; then
+define_bool CONFIG_MTK_MTD_NAND y
+define_bool CONFIG_MTK_SLC_NAND_SUPPORT y
+fi
+
+#-----------------------
+# MT7623 Ethernet
+#-----------------------
+choice 'Use GE1 or GE2' "GMAC1 CONFIG_USE_GE1  \
+	                 GMAC2 CONFIG_USE_GE2
+			" GMAC1
+if [ "$CONFIG_USE_GE1" = "y" ]; then
+choice 'GE1 connected to' "GE_MII_FORCE_100	 GE_MII_FORCE_100 \
+		           GE_RVMII_FORCE_100    GE_RVMII_FORCE_100 \
+		  	   GE_MII_AN		 GE_MII_AN \
+		           GE_RGMII_FORCE_1000   GE_RGMII_FORCE_1000 \
+		           GE_RGMII_AN		 GE_RGMII_AN \
+			   GE_TRGMII_FORCE_2600  CONFIG_GE1_TRGMII_FORCE_2600 \
+			  " GE_RGMII_FORCE_1000
+else
+choice 'GE2 connected to' " GE_MII_FORCE_100		GE_MII_FORCE_100 \
+			    GE_RVMII_FORCE_100		GE_RVMII_FORCE_100 \
+  			    GE_MII_AN			GE_MII_AN \
+			    GE_RGMII_FORCE_1000		GE_RGMII_FORCE_1000 \
+			    GE_RGMII_AN			GE_RGMII_AN \
+			    GE_RGMII_INTERNAL_P0_AN	GE_RGMII_INTERNAL_P0_AN \
+			    GE_RGMII_INTERNAL_P4_AN	GE_RGMII_INTERNAL_P4_AN 
+			   " GE_RGMII_FORCE_1000
+fi
+
+if [ "$GE_MII_AN" = "y" -a "$CONFIG_USE_GE1" = "y" ]; then
+    hex "10/100 PHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x1e
+fi
+if [ "$GE_MII_AN" = "y" -a "$CONFIG_USE_GE2" = "y" ]; then
+    hex "10/100 PHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x1f
+fi
+
+if [ "$GE_RGMII_AN" = "y" -a "$CONFIG_USE_GE1" = "y" ]; then
+    if [ "$MT7623_FPGA_BOARD" = "y" ]; then
+        hex "GigaPHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x5
+    else
+        hex "GigaPHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x1e
+    fi
+fi
+if [ "$GE_RGMII_AN" = "y" -a "$CONFIG_USE_GE2" = "y" ]; then
+    if [ "$MT7623_FPGA_BOARD" = "y" ]; then
+        hex "GigaPHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x6
+    else
+        hex "GigaPHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x1f
+    fi
+fi
+
+if [ "$GE_RGMII_INTERNAL_P0_AN" = "y" -a "$CONFIG_USE_GE2" = "y" ]; then
+    define_hex   MAC_TO_GIGAPHY_MODE_ADDR 0x0
+fi
+
+if [ "$GE_RGMII_INTERNAL_P4_AN" = "y" -a "$CONFIG_USE_GE2" = "y" ]; then
+    define_hex   MAC_TO_GIGAPHY_MODE_ADDR 0x4
+fi
+	
+fi
+
+
+
+#########################################################################################3
+# MT7622
+#########################################################################################3
+if [ "$MT7622_FPGA_BOARD" = "y" -o "$MT7622_ASIC_BOARD" = "y" ]; then
+
+#-----------------------
+# MT7622 FLASH
+#-----------------------
+choice 'Flash Type' "NAND ON_BOARD_NAND_FLASH_COMPONENT \
+                     SNAND ON_BOARD_SPI_NAND_FLASH_COMPONENT \
+                     SNOR ON_BOARD_SPI_NOR_FLASH_COMPONENT \
+                     eMMC ON_BOARD_EMMC_COMPONENT \
+                     SD OFF_BOARD_SD_CARD_COMPONENT
+		    " SNAND
+
+if [ "$ON_BOARD_NAND_FLASH_COMPONENT" = "y" ]; then
+define_bool CONFIG_MTK_MTD_NAND y
+define_bool CONFIG_MTK_SLC_NAND_SUPPORT y
+fi
+
+if [ "$ON_BOARD_SPI_NAND_FLASH_COMPONENT" = "y" ]; then
+define_bool CONFIG_MTK_MTD_NAND y
+define_bool CONFIG_MTK_SLC_NAND_SUPPORT y
+define_bool CONFIG_MTK_SPI_NAND_SUPPORT y
+fi
+
+#-----------------------
+# MT7622 DDR
+#-----------------------
+
+if [ "$CONFIG_CUSTOMIZE_DRAM_SIZE" = "y" ]; then
+choice 'DDR Component' " 512Mb ON_BOARD_512Mb_DRAM_COMPONENT \
+			1024Mb ON_BOARD_1024Mb_DRAM_COMPONENT \
+			2048Mb ON_BOARD_2048Mb_DRAM_COMPONENT \
+			4096Mb ON_BOARD_4096Mb_DRAM_COMPONENT \
+			8192Mb ON_BOARD_8192Mb_DRAM_COMPONENT \
+			2GB ON_BOARD_2GB_DRAM_COMPONENT
+			" 4096Mb
+fi
+endchoice
+
+#-----------------------
+# MT7622 Ethernet
+#-----------------------
+choice 'Use GE1 or GE2' "GMAC1 CONFIG_USE_GE1  \
+	                 GMAC2 CONFIG_USE_GE2
+			" GMAC2
+if [ "$CONFIG_USE_GE1" = "y" ]; then
+choice 'GE1 connected to' "GE_MII_FORCE_100	 GE_MII_FORCE_100 \
+		           GE_RVMII_FORCE_100    GE_RVMII_FORCE_100 \
+		  	   GE_MII_AN		 GE_MII_AN \
+		           GE_RGMII_FORCE_1000   GE_RGMII_FORCE_1000 \
+		           GE_RGMII_AN		 GE_RGMII_AN \
+			   GE_SGMII_FORCE_2500	 CONFIG_GE1_SGMII_FORCE_2500 \
+			   GE_ESW	 	 CONFIG_GE1_ESW
+			  " GE_RGMII_FORCE_1000
+else
+choice 'GE2 connected to' " GE_MII_FORCE_100		GE_MII_FORCE_100 \
+			    GE_RVMII_FORCE_100		GE_RVMII_FORCE_100 \
+  			    GE_MII_AN			GE_MII_AN \
+			    GE_RGMII_FORCE_1000		GE_RGMII_FORCE_1000 \
+			    GE_RGMII_AN			GE_RGMII_AN \
+			    GE_RGMII_INTERNAL_P0_AN	GE_RGMII_INTERNAL_P0_AN \
+			    GE_RGMII_INTERNAL_P4_AN	GE_RGMII_INTERNAL_P4_AN 
+			   " GE_RGMII_AN
+fi
+
+if [ "$GE_MII_AN" = "y" -a "$CONFIG_USE_GE1" = "y" ]; then
+    hex "10/100 PHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x1e
+fi
+if [ "$GE_MII_AN" = "y" -a "$CONFIG_USE_GE2" = "y" ]; then
+    hex "10/100 PHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x1f
+fi
+
+if [ "$GE_RGMII_AN" = "y" -a "$CONFIG_USE_GE1" = "y" ]; then
+    if [ "$MT7622_FPGA_BOARD" = "y" ]; then
+        hex "GigaPHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x5
+    else
+        hex "GigaPHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x1e
+    fi
+fi
+if [ "$GE_RGMII_AN" = "y" -a "$CONFIG_USE_GE2" = "y" ]; then
+    if [ "$MT7622_FPGA_BOARD" = "y" ]; then
+        hex "GigaPHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x6
+    else
+        hex "GigaPHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x1f
+    fi
+fi
+
+if [ "$GE_RGMII_INTERNAL_P0_AN" = "y" -a "$CONFIG_USE_GE2" = "y" ]; then
+    define_hex   MAC_TO_GIGAPHY_MODE_ADDR 0x0
+fi
+
+if [ "$GE_RGMII_INTERNAL_P4_AN" = "y" -a "$CONFIG_USE_GE2" = "y" ]; then
+    define_hex   MAC_TO_GIGAPHY_MODE_ADDR 0x4
+fi
+
+if [ "$CONFIG_GE1_SGMII_FORCE_2500" = "y" ]; then
+    define_bool CONFIG_RTL8367 y
+fi
+
+comment ""
+tristate "Customize Dram Size" CONFIG_CUSTOMIZE_DRAM_SIZE
+fi
+
+
+#########################################################################################3
+# MT7626
+#########################################################################################3
+if [ "$MT7626_FPGA_BOARD" = "y" -o "$MT7626_ASIC_BOARD" = "y" ]; then
+
+#-----------------------
+# MT7626 FLASH
+#-----------------------
+choice 'Flash Type' "SNOR ON_BOARD_SPI_NOR_FLASH_COMPONENT \
+		    " SNOR
+
+#-----------------------
+# MT7626 FLASH SIZE
+#-----------------------
+
+choice 'Flash Size' "2M ON_BOARD_2M_FLASH_COMPONENT \
+                     4M ON_BOARD_4M_FLASH_COMPONENT \
+                     8M ON_BOARD_8M_FLASH_COMPONENT \
+                     16M ON_BOARD_16M_FLASH_COMPONENT
+                    " 2M
+
+#-----------------------
+# MT7626 DDR
+#-----------------------
+choice 'DDR Component' " 256Mb ON_BOARD_256Mb_DRAM_COMPONENT
+			" 256Mb
+
+choice 'DDR Freq' "DDR_FREQ_1066MHZ DDR_FREQ_1066MHZ \
+                    DDR_FREQ_1100MHZ DDR_FREQ_1100MHZ \
+                    DDR_FREQ_1200MHZ DDR_FREQ_1200MHZ
+                   " DDR_FREQ_1066MHZ
+
+#-----------------------
+# MT7626 Ethernet
+#---------------------
+choice 'Use GE1 or GE2' "GMAC1 CONFIG_USE_GE1  \
+	                 GMAC2 CONFIG_USE_GE2
+			" GMAC2
+if [ "$CONFIG_USE_GE1" = "y" ]; then
+choice 'GE1 connected to' "GE_MII_FORCE_100	 GE_MII_FORCE_100 \
+		           GE_RVMII_FORCE_100    GE_RVMII_FORCE_100 \
+			   GE_MII_AN		 GE_MII_AN \
+		           GE_RGMII_FORCE_1000   GE_RGMII_FORCE_1000 \
+		           GE_RGMII_AN		 GE_RGMII_AN \
+			   GE_SGMII_FORCE_2500	 CONFIG_GE1_SGMII_FORCE_2500 \
+			   GE_ESW	 	 CONFIG_GE1_ESW
+			  " GE_ESW
+else
+choice 'GE2 connected to' " GE_MII_FORCE_100		GE_MII_FORCE_100 \
+			    GE_RVMII_FORCE_100		GE_RVMII_FORCE_100 \
+			    GE_MII_AN			GE_MII_AN \
+			    GE_RGMII_FORCE_1000		GE_RGMII_FORCE_1000 \
+			    GE_RGMII_AN			GE_RGMII_AN \
+			    GE_RGMII_INTERNAL_P0_AN	GE_RGMII_INTERNAL_P0_AN \
+			    GE_RGMII_INTERNAL_P4_AN	GE_RGMII_INTERNAL_P4_AN \
+			    GE_SGMII_AN	 		CONFIG_GE2_SGMII_AN
+			   " GE_RGMII_AN
+fi
+
+bool "Partition LAN/WAN" LAN_WAN_PARTITION
+if [ "$LAN_WAN_PARTITION" = "y" ]; then
+ choice 'LAN/WAN Board Layout' "WAN_AT_P0 CONFIG_WAN_AT_P0 \
+								WAN_AT_P1 CONFIG_WAN_AT_P1 \
+								WAN_AT_P2 CONFIG_WAN_AT_P2 \
+								WAN_AT_P3 CONFIG_WAN_AT_P3 \
+								WAN_AT_P4 CONFIG_WAN_AT_P4 
+                               "
+fi
+
+if [ "$GE_MII_AN" = "y" -a "$CONFIG_USE_GE1" = "y" ]; then
+    hex "10/100 PHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x1e
+fi
+if [ "$GE_MII_AN" = "y" -a "$CONFIG_USE_GE2" = "y" ]; then
+    hex "10/100 PHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x1f
+fi
+
+if [ "$GE_RGMII_AN" = "y" -a "$CONFIG_USE_GE1" = "y" ]; then
+    if [ "$MT7626_FPGA_BOARD" = "y" ]; then
+        hex "GigaPHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x5
+    else
+        hex "GigaPHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x1e
+    fi
+fi
+if [ "$GE_RGMII_AN" = "y" -a "$CONFIG_USE_GE2" = "y" ]; then
+    if [ "$MT7626_FPGA_BOARD" = "y" ]; then
+        hex "GigaPHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x6
+    else
+        hex "GigaPHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x0
+    fi
+fi
+
+if [ "$GE_RGMII_INTERNAL_P0_AN" = "y" -a "$CONFIG_USE_GE2" = "y" ]; then
+    define_hex   MAC_TO_GIGAPHY_MODE_ADDR 0x0
+fi
+
+if [ "$GE_RGMII_INTERNAL_P4_AN" = "y" -a "$CONFIG_USE_GE2" = "y" ]; then
+    define_hex   MAC_TO_GIGAPHY_MODE_ADDR 0x4
+fi
+
+if [ "$CONFIG_GE1_SGMII_FORCE_2500" = "y" ]; then
+	bool "RTL8367"	CONFIG_RTL8367	n
+	bool "RTL8367 v142"	CONFIG_RTL8367_V142	n
+	bool "AR8337N"	CONFIG_AR8337N	n
+fi
+
+
+if [ "$CONFIG_AR8337N" = "y" ]; then
+    int "AR8337N - GPIO Rst Switch" GPIO_RESET_SWITCH 60
+    int "AR8337N - RESET Time Gap xx(ms)" GPIO_RESET_TIME_GAP_MS 20
+    bool "AR8337N - Switch Need Down After GPIO Rst" SWITCH_NEED_PHY_DOWN_AFTER_GPIO_RESET y
+fi
+
+if [ "$CONFIG_GE2_SGMII_AN" = "y" ]; then
+    hex "GigaPHY address for Auto Polling" MAC_TO_GIGAPHY_MODE_ADDR 0x5
+fi
+
+string "Dut IP, i.e. 192.168.0.1" CONFIG_DUT_IP "192.168.0.1"
+string "Default Server IP, i.e. 192.168.0.3" CONFIG_SERVER_IP "192.168.0.3"
+
+tristate "Flash Layout" CONFIG_FLASH_LAYOUT
+if [ "$CONFIG_FLASH_LAYOUT" = "y" ]; then
+	hex "Factory Boot Offset"		FACTORY_BOOT_OFFSET 		0x0
+	hex "Factory Boot Len"			FACTORY_BOOT_LEN 			0x25000
+
+	hex "Firmware Offset"			FIRMWARE_OFFSET 			0x25000
+	hex "Firmware Len"				FIRMWARE_LEN 				0x3d5000
+
+	hex "Factory Info Offset"		FACTORY_INFO_OFFSET 		0x3fe000
+	hex "Factory Info Len"			FACTORY_INFO_LEN 			0x1000
+
+	hex "User Config Offset"		USER_CONFIG_OFFSET 			0x3fa000
+	hex "User Config Len"			USER_CONFIG_LEN 			0x2000
+
+	hex "BOOTCFG Offset"			BOOTCFG_OFFSET 				0x2F000
+	hex "BOOTCFG Len"				BOOTCFG_LEN 				0x1000
+
+	hex "Firmware2 Offset"			FIRMWARE2_OFFSET 			0x400000
+	hex "Firmware2 Len"				FIRMWARE2_LEN 				0x3D0000
+fi
+
+bool "Dual Image" CONFIG_DUAL_IMAGE
+
+tristate "Web FailSafe" CONFIG_UIP
+if [ "$CONFIG_UIP" = "y" ]; then
+	choice 'Brand' "tplink CONFIG_BRAND_TPLINK \
+					mercusys CONFIG_BRAND_MERCUSYS" tplink
+	if [ "$CONFIG_BRAND_TPLINK" = "y" ]; then
+		define_string CONFIG_PR_NAME "tplink"
+	else
+	if [ "$CONFIG_BRAND_MERCUSYS" = "y" ]; then
+		define_string CONFIG_PR_NAME "mercusys"
+	fi
+	fi
+
+	hex "DHCP Server IP(in hex, i.e. 0xC0A80001)" DHCPD_SERVER_IP_HEX 0xC0A80001
+	hex "DHCP Pool Start IP(in hex, i.e. 0xC0A80001)" DHCPD_POOL_START_IP_HEX 0xC0A8000C
+	hex "DHCP Pool End IP(in hex, i.e. 0xC0A80001)" DHCPD_POOL_END_IP_HEX 0xC0A80064
+	hex "Product ID(in hex, i.e. 0x0C800001)" CONFIG_DEFAULT_PRODUCT_ID 0x0C800001
+fi
+
+comment ""
+tristate "Customize Dram Size" CONFIG_CUSTOMIZE_DRAM_SIZE
+fi
+
+#choice 'Default Behavior when Kernel Boot up Fail' "None None \
+#			 FW_UPGRADE_BY_WEBUI FW_UPGRADE_BY_WEBUI
+#			"
+
+choice 'Uboot type' "FactoryUboot CONFIG_FACTORY_UBOOT \
+							NormalUboot CONFIG_NORMAL_UBOOT \
+						   " FactoryUboot
+
+choice 'Hardware board' "ARCHERC80V1 HARDWARE_BOARD_ARCHERC80V1 \
+                        ARCHERC64V1 HARDWARE_BOARD_ARCHERC64V1 \
+			MR50GV1 HARDWARE_BOARD_MR50GV1" ARCHERC80V1
+			
+if [ "$HARDWARE_BOARD_ARCHERC80V1" = "y" ]; then
+	define_string HARDWARE_BOARD "ARCHERC80V1"
+else
+if [ "$HARDWARE_BOARD_MR50GV1" = "y" ]; then
+	define_string HARDWARE_BOARD "MR50GV1"
+else
+if [ "$HARDWARE_BOARD_ARCHERC64V1" = "y" ]; then
+	define_string HARDWARE_BOARD "ARCHERC64V1"
+fi
+fi
+fi
+
+
+#Load Kernel Image from a USB Storage Device \
+#Load Kernel Image from a SD card
+#Load Kernel Image from a Browser \
+#Load Kernel Image from the System Recovery Partition \

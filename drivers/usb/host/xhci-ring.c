@@ -14,13 +14,24 @@
  * SPDX-License-Identifier:	GPL-2.0+
  */
 
-#include <common.h>
 #include <asm/byteorder.h>
-#include <usb.h>
 #include <asm/unaligned.h>
-#include <asm-generic/errno.h>
+#include <asm/errno.h>
+
+#include <compiler.h>
+#include <common.h>
+
+#include <usb.h>
 
 #include "xhci.h"
+
+//#define XHCI_RING_DEBUG
+
+#ifdef	XHCI_RING_DEBUG
+#define	XHCI_RING_PRINTF(fmt,args...)	printf (fmt ,##args)
+#else
+#define XHCI_RING_PRINTF(fmt,args...)
+#endif
 
 /**
  * Is this TRB a link TRB or was the last TRB the last TRB in this event ring
@@ -212,6 +223,7 @@ static int prepare_ring(struct xhci_ctrl *ctrl, struct xhci_ring *ep_ring,
 {
 	union xhci_trb *next = ep_ring->enqueue;
 
+
 	/* Make sure the endpoint has been added to xHC schedule */
 	switch (ep_state) {
 	case EP_STATE_DISABLED:
@@ -228,13 +240,12 @@ static int prepare_ring(struct xhci_ctrl *ctrl, struct xhci_ring *ep_ring,
 		puts("WARN halted endpoint, queueing URB anyway.\n");
 	case EP_STATE_STOPPED:
 	case EP_STATE_RUNNING:
-		debug("EP STATE RUNNING.\n");
+		XHCI_RING_PRINTF("EP STATE RUNNING.\n");
 		break;
 	default:
 		puts("ERROR unknown endpoint state for ep\n");
 		return -EINVAL;
 	}
-
 	while (last_trb(ctrl, ep_ring, ep_ring->enq_seg, next)) {
 		/*
 		 * If we're not dealing with 0.95 hardware or isoc rings
@@ -254,7 +265,6 @@ static int prepare_ring(struct xhci_ctrl *ctrl, struct xhci_ring *ep_ring,
 		ep_ring->enqueue = ep_ring->enq_seg->trbs;
 		next = ep_ring->enqueue;
 	}
-
 	return 0;
 }
 
@@ -274,9 +284,9 @@ void xhci_queue_command(struct xhci_ctrl *ctrl, u8 *ptr, u32 slot_id,
 {
 	u32 fields[4];
 	u64 val_64 = (uintptr_t)ptr;
-
+	XHCI_RING_PRINTF("xhci_queue_command() ctrl->cmd_ring=%x\n", ctrl->cmd_ring);
 	BUG_ON(prepare_ring(ctrl, ctrl->cmd_ring, EP_STATE_RUNNING));
-
+	XHCI_RING_PRINTF("after prepare_ring\n");
 	fields[0] = lower_32_bits(val_64);
 	fields[1] = upper_32_bits(val_64);
 	fields[2] = 0;
@@ -287,6 +297,8 @@ void xhci_queue_command(struct xhci_ctrl *ctrl, u8 *ptr, u32 slot_id,
 
 	/* Ring the command ring doorbell */
 	xhci_writel(&ctrl->dba->doorbell[0], DB_VALUE_HOST);
+        xhci_readl(&ctrl->dba->doorbell[0]);
+
 }
 
 /**
@@ -297,14 +309,26 @@ void xhci_queue_command(struct xhci_ctrl *ctrl, u8 *ptr, u32 slot_id,
  * @param remainder	remaining packets to be sent
  * @return remainder if remainder is less than max else max
  */
-static u32 xhci_td_remainder(unsigned int remainder)
+static u32 xhci_td_remainder(unsigned int td_transfer_size, unsigned int td_running_total
+		, unsigned int maxp, unsigned trb_buffer_length)
 {
-	u32 max = (1 << (21 - 17 + 1)) - 1;
+	u32 max = 31;
+	int remainder, td_packet_count, packet_transferred;
 
-	if ((remainder >> 10) >= max)
+	//0 for the last TRB
+	//FIXME: need to workaround if there is ZLP in this TD
+	if (td_running_total + trb_buffer_length == td_transfer_size)
+		return 0;
+
+	//FIXME: need to take care of high-bandwidth (MAX_ESIT)
+	packet_transferred = (td_running_total /*+ trb_buffer_length*/) / maxp;
+	td_packet_count = DIV_ROUND_UP(td_transfer_size, maxp);
+	remainder = td_packet_count - packet_transferred;
+
+	if (remainder > max)
 		return max << 17;
 	else
-		return (remainder >> 10) << 17;
+		return remainder << 17;
 }
 
 /**
@@ -359,6 +383,7 @@ static void giveback_first_trb(struct usb_device *udev, int ep_index,
 	 * Pass all the TRBs to the hardware at once and make sure this write
 	 * isn't reordered.
 	 */
+	xhci_flush_cache((uint32_t)start_trb, sizeof(struct xhci_generic_trb));
 	if (start_cycle)
 		start_trb->field[3] |= cpu_to_le32(start_cycle);
 	else
@@ -429,10 +454,12 @@ union xhci_trb *xhci_wait_for_event(struct xhci_ctrl *ctrl, trb_type expected)
 {
 	trb_type type;
 	unsigned long ts = get_timer(0);
-
+	int retry = 50;
+//	XHCI_RING_PRINTF("	xhci_wait_for_event()\n");
+try_again:
 	do {
 		union xhci_trb *event = ctrl->event_ring->dequeue;
-
+	
 		if (!event_ready(ctrl))
 			continue;
 
@@ -440,7 +467,7 @@ union xhci_trb *xhci_wait_for_event(struct xhci_ctrl *ctrl, trb_type expected)
 		if (type == expected)
 			return event;
 
-		if (type == TRB_PORT_STATUS)
+		if (type == TRB_PORT_STATUS) {
 		/* TODO: remove this once enumeration has been reworked */
 			/*
 			 * Port status change events always have a
@@ -449,7 +476,8 @@ union xhci_trb *xhci_wait_for_event(struct xhci_ctrl *ctrl, trb_type expected)
 			BUG_ON(GET_COMP_CODE(
 				le32_to_cpu(event->generic.field[2])) !=
 								COMP_SUCCESS);
-		else
+		}
+		else 
 			printf("Unexpected XHCI event TRB, skipping... "
 				"(%08x %08x %08x %08x)\n",
 				le32_to_cpu(event->generic.field[0]),
@@ -458,12 +486,17 @@ union xhci_trb *xhci_wait_for_event(struct xhci_ctrl *ctrl, trb_type expected)
 				le32_to_cpu(event->generic.field[3]));
 
 		xhci_acknowledge_event(ctrl);
-	} while (get_timer(ts) < XHCI_TIMEOUT);
+	} while (get_timer(ts) < (XHCI_TIMEOUT * 50000));
+	//} while (1);
+	retry--;
+	if (retry > 0)
+		goto try_again;
+			
 
 	if (expected == TRB_TRANSFER)
 		return NULL;
 
-	printf("XHCI timeout on event type %d... cannot recover.\n", expected);
+	printf("\n\n\nXHCI timeout on event type %d... cannot recover.\n\n\n", expected);
 	BUG();
 }
 
@@ -570,7 +603,7 @@ int xhci_bulk_tx(struct usb_device *udev, unsigned long pipe,
 	u32 trb_fields[4];
 	u64 val_64 = (uintptr_t)buffer;
 
-	debug("dev=%p, pipe=%lx, buffer=%p, length=%d\n",
+	XHCI_RING_PRINTF("dev=%p, pipe=%lx, buffer=%p, length=%d\n",
 		udev, pipe, buffer, length);
 
 	ep_index = usb_pipe_ep_index(pipe);
@@ -623,12 +656,9 @@ int xhci_bulk_tx(struct usb_device *udev, unsigned long pipe,
 	 */
 	start_trb = &ring->enqueue->generic;
 	start_cycle = ring->cycle_state;
-
 	running_total = 0;
 	maxpacketsize = usb_maxpacket(udev, pipe);
-
 	total_packet_count = DIV_ROUND_UP(length, maxpacketsize);
-
 	/* How much data is in the first TRB? */
 	/*
 	 * How much data is (potentially) left before the 64KB boundary?
@@ -637,7 +667,6 @@ int xhci_bulk_tx(struct usb_device *udev, unsigned long pipe,
 	 * we send request in more than 1 TRB by chaining them.
 	 */
 	addr = val_64;
-
 	if (trb_buff_len > length)
 		trb_buff_len = length;
 
@@ -674,19 +703,18 @@ int xhci_bulk_tx(struct usb_device *udev, unsigned long pipe,
 
 		/* Set the TRB length, TD size, and interrupter fields. */
 		if (HC_VERSION(xhci_readl(&ctrl->hccr->cr_capbase)) < 0x100)
-			remainder = xhci_td_remainder(length - running_total);
+			remainder = xhci_td_remainder(length, running_total, maxpacketsize, trb_buff_len);
+			//remainder = xhci_td_remainder(length - running_total);
 		else
 			remainder = xhci_v1_0_td_remainder(running_total,
 							   trb_buff_len,
 							   total_packet_count,
 							   maxpacketsize,
 							   num_trbs - 1);
-
 		length_field = ((trb_buff_len & TRB_LEN_MASK) |
 				remainder |
 				((0 & TRB_INTR_TARGET_MASK) <<
 				TRB_INTR_TARGET_SHIFT));
-
 		trb_fields[0] = lower_32_bits(addr);
 		trb_fields[1] = upper_32_bits(addr);
 		trb_fields[2] = length_field;
@@ -707,7 +735,7 @@ int xhci_bulk_tx(struct usb_device *udev, unsigned long pipe,
 
 	event = xhci_wait_for_event(ctrl, TRB_TRANSFER);
 	if (!event) {
-		debug("XHCI bulk transfer timed out, aborting...\n");
+		XHCI_RING_PRINTF("XHCI bulk transfer timed out, aborting...\n");
 		abort_td(udev, ep_index);
 		udev->status = USB_ST_NAK_REC;  /* closest thing to a timeout */
 		udev->act_len = 0;
@@ -756,7 +784,7 @@ int xhci_ctrl_tx(struct usb_device *udev, unsigned long pipe,
 	struct xhci_ring *ep_ring;
 	union xhci_trb *event;
 
-	debug("req=%u (%#x), type=%u (%#x), value=%u (%#x), index=%u\n",
+	XHCI_RING_PRINTF("req=%u (%#x), type=%u (%#x), value=%u (%#x), index=%u\n",
 		req->request, req->request,
 		req->requesttype, req->requesttype,
 		le16_to_cpu(req->value), le16_to_cpu(req->value),
@@ -811,7 +839,7 @@ int xhci_ctrl_tx(struct usb_device *udev, unsigned long pipe,
 	start_trb = &ep_ring->enqueue->generic;
 	start_cycle = ep_ring->cycle_state;
 
-	debug("start_trb %p, start_cycle %d\n", start_trb, start_cycle);
+	XHCI_RING_PRINTF("start_trb %p, start_cycle %d\n", start_trb, start_cycle);
 
 	/* Queue setup TRB - see section 6.4.1.2.1 */
 	/* FIXME better way to translate setup_packet into two u32 fields? */
@@ -821,7 +849,9 @@ int xhci_ctrl_tx(struct usb_device *udev, unsigned long pipe,
 		field |= 0x1;
 
 	/* xHCI 1.0 6.4.1.2.1: Transfer Type field */
-	if (HC_VERSION(xhci_readl(&ctrl->hccr->cr_capbase)) == 0x100) {
+	//if (HC_VERSION(xhci_readl(&ctrl->hccr->cr_capbase)) == 0x100) {
+	// XHCI_MTK
+	if (1) {
 		if (length > 0) {
 			if (req->requesttype & USB_DIR_IN)
 				field |= (TRB_DATA_IN << TRB_TX_TYPE_SHIFT);
@@ -830,7 +860,7 @@ int xhci_ctrl_tx(struct usb_device *udev, unsigned long pipe,
 		}
 	}
 
-	debug("req->requesttype = %d, req->request = %d,"
+	XHCI_RING_PRINTF("req->requesttype = %d, req->request = %d,"
 		"le16_to_cpu(req->value) = %d,"
 		"le16_to_cpu(req->index) = %d,"
 		"le16_to_cpu(req->length) = %d\n",
@@ -857,12 +887,13 @@ int xhci_ctrl_tx(struct usb_device *udev, unsigned long pipe,
 	else
 		field = (TRB_DATA << TRB_TYPE_SHIFT);
 
-	length_field = (length & TRB_LEN_MASK) | xhci_td_remainder(length) |
+	length_field = (length & TRB_LEN_MASK) | 0 |
+	//length_field = (length & TRB_LEN_MASK) | xhci_td_remainder(length) |
 			((0 & TRB_INTR_TARGET_MASK) << TRB_INTR_TARGET_SHIFT);
-	debug("length_field = %d, length = %d,"
-		"xhci_td_remainder(length) = %d , TRB_INTR_TARGET(0) = %d\n",
-		length_field, (length & TRB_LEN_MASK),
-		xhci_td_remainder(length), 0);
+	//XHCI_RING_PRINTF("length_field = %d, length = %d,"
+	//	"xhci_td_remainder(length) = %d , TRB_INTR_TARGET(0) = %d\n",
+	//	length_field, (length & TRB_LEN_MASK),
+	//	xhci_td_remainder(length), 0);
 
 	if (length > 0) {
 		if (req->requesttype & USB_DIR_IN)
@@ -931,7 +962,7 @@ int xhci_ctrl_tx(struct usb_device *udev, unsigned long pipe,
 	return (udev->status != USB_ST_NOT_PROC) ? 0 : -1;
 
 abort:
-	debug("XHCI control transfer timed out, aborting...\n");
+	XHCI_RING_PRINTF("XHCI control transfer timed out, aborting...\n");
 	abort_td(udev, ep_index);
 	udev->status = USB_ST_NAK_REC;
 	udev->act_len = 0;

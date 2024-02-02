@@ -19,7 +19,8 @@
 
 #include <asm/cache.h>
 #include <asm/io.h>
-#include <linux/list.h>
+
+#include <configs/mt7623_evb.h>
 
 #define upper_32_bits(n) (u32)((n) >> 32)
 #define lower_32_bits(n) (u32)(n)
@@ -27,7 +28,7 @@
 #define MAX_EP_CTX_NUM		31
 #define XHCI_ALIGNMENT		64
 /* Generic timeout for XHCI events */
-#define XHCI_TIMEOUT		5000
+#define XHCI_TIMEOUT		100000
 /* Max number of USB devices for any host controller - limit in section 6.1 */
 #define MAX_HC_SLOTS            256
 /* Section 5.3.3 - MaxPorts */
@@ -153,6 +154,9 @@ struct xhci_hccr {
 #define	RTSOFF_MASK	(~0x1f)
 
 };
+
+/* Number of registers per port */
+#define NUM_PORT_REGS   4
 
 struct xhci_hcor_port_regs {
 	volatile uint32_t or_portsc;
@@ -1044,9 +1048,9 @@ struct xhci_erst {
  * (1K bytes * 8bytes/bit) / (4*32 bits) = 64 segment entries in the table,
  * meaning 64 ring segments.
  * Initial allocated size of the ERST, in number of entries */
-#define	ERST_NUM_SEGS	3
+#define	ERST_NUM_SEGS	1
 /* Initial number of event segment rings allocated */
-#define	ERST_ENTRIES	3
+#define	ERST_ENTRIES	1
 /* Initial allocated size of the ERST, in number of entries */
 #define	ERST_SIZE	64
 /* Poll every 60 seconds */
@@ -1087,44 +1091,6 @@ struct xhci_virt_device {
 #define	XHCI_MAX_RINGS_CACHED	31
 	struct xhci_virt_ep		eps[31];
 };
-
-/* TODO: copied from ehci.h - can be refactored? */
-/* xHCI spec says all registers are little endian */
-static inline unsigned int xhci_readl(uint32_t volatile *regs)
-{
-	return readl(regs);
-}
-
-static inline void xhci_writel(uint32_t volatile *regs, const unsigned int val)
-{
-	writel(val, regs);
-}
-
-/*
- * Registers should always be accessed with double word or quad word accesses.
- * Some xHCI implementations may support 64-bit address pointers.  Registers
- * with 64-bit address pointers should be written to with dword accesses by
- * writing the low dword first (ptr[0]), then the high dword (ptr[1]) second.
- * xHCI implementations that do not support 64-bit address pointers will ignore
- * the high dword, and write order is irrelevant.
- */
-static inline u64 xhci_readq(__le64 volatile *regs)
-{
-	__u32 *ptr = (__u32 *)regs;
-	u64 val_lo = readl(ptr);
-	u64 val_hi = readl(ptr + 1);
-	return val_lo + (val_hi << 32);
-}
-
-static inline void xhci_writeq(__le64 volatile *regs, const u64 val)
-{
-	__u32 *ptr = (__u32 *)regs;
-	u32 val_lo = lower_32_bits(val);
-	/* FIXME */
-	u32 val_hi = 0;
-	writel(val_lo, ptr);
-	writel(val_hi, ptr + 1);
-}
 
 int xhci_hcd_init(int index, struct xhci_hccr **ret_hccr,
 					struct xhci_hcor **ret_hcor);
@@ -1206,8 +1172,7 @@ struct xhci_ctrl {
 	struct xhci_hcor *hcor;
 	struct xhci_doorbell_array *dba;
 	struct xhci_run_regs *run_regs;
-	struct xhci_device_context_array *dcbaa		\
-			__attribute__ ((aligned(ARCH_DMA_MINALIGN)));
+	struct xhci_device_context_array *dcbaa;
 	struct xhci_ring *event_ring;
 	struct xhci_ring *cmd_ring;
 	struct xhci_ring *transfer_ring;
@@ -1247,7 +1212,7 @@ int xhci_check_maxpacket(struct usb_device *udev);
 void xhci_flush_cache(uint32_t addr, u32 type_len);
 void xhci_inval_cache(uint32_t addr, u32 type_len);
 void xhci_cleanup(struct xhci_ctrl *ctrl);
-struct xhci_ring *xhci_ring_alloc(unsigned int num_segs, bool link_trbs);
+struct xhci_ring *xhci_ring_alloc(unsigned int num_segs, int link_trbs);
 int xhci_alloc_virt_device(struct usb_device *udev);
 int xhci_mem_init(struct xhci_ctrl *ctrl, struct xhci_hccr *hccr,
 		  struct xhci_hcor *hcor);

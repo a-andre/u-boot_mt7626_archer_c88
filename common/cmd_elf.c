@@ -168,7 +168,7 @@ int do_bootvx(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	if ((argc == 2) && (strcmp(argv[1], "tftp") == 0)) {
 		if (NetLoop(TFTPGET) <= 0)
 			return 1;
-		printf("Automatic boot of VxWorks image at address 0x%08lx ...\n",
+		printf("Automatic boot of tp image at address 0x%08lx ...\n",
 			addr);
 	}
 #endif
@@ -260,12 +260,12 @@ int do_bootvx(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 
 	printf("## Using bootline (@ 0x%lx): %s\n", bootaddr,
 			(char *) bootaddr);
-	printf("## Starting vxWorks at 0x%08lx ...\n", addr);
+	printf("## Starting tp at 0x%08lx ...\n", addr);
 
 	dcache_disable();
 	((void (*)(int)) addr) (0);
 
-	puts("## vxWorks terminated\n");
+	puts("## tp terminated\n");
 	return 1;
 }
 
@@ -364,6 +364,6 @@ U_BOOT_CMD(
 
 U_BOOT_CMD(
 	bootvx,      2,      0,      do_bootvx,
-	"Boot vxWorks from an ELF image",
-	" [address] - load address of vxWorks ELF image."
+	"Boot tp from an ELF image",
+	" [address] - load address of tp ELF image."
 );

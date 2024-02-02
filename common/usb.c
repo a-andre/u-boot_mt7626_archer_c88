@@ -74,7 +74,7 @@ int usb_init(void)
 	/* init low_level USB */
 	for (i = 0; i < CONFIG_USB_MAX_CONTROLLER_COUNT; i++) {
 		/* init low_level USB */
-		printf("USB%d:   ", i);
+		//debug("USB%d:   ", i);
 		if (usb_lowlevel_init(i, USB_INIT_HOST, &ctrl)) {
 			puts("lowlevel init failed\n");
 			continue;
@@ -84,7 +84,7 @@ int usb_init(void)
 		 * i.e. search HUBs and configure them
 		 */
 		start_index = dev_index;
-		printf("scanning bus %d for devices... ", i);
+		//debug("scanning bus %d for devices... ", i);
 		dev = usb_alloc_new_device(ctrl);
 		/*
 		 * device 0 is always present
@@ -126,7 +126,7 @@ int usb_stop(void)
 
 		for (i = 0; i < CONFIG_USB_MAX_CONTROLLER_COUNT; i++) {
 			if (usb_lowlevel_stop(i))
-				printf("failed to stop USB controller %d\n", i);
+				debug("failed to stop USB controller %d\n", i);
 		}
 	}
 
@@ -188,9 +188,10 @@ int usb_control_msg(struct usb_device *dev, unsigned int pipe,
 	setup_packet->value = cpu_to_le16(value);
 	setup_packet->index = cpu_to_le16(index);
 	setup_packet->length = cpu_to_le16(size);
-	debug("usb_control_msg: request: 0x%X, requesttype: 0x%X, " \
+	//debug("usb_control_msg: request: 0x%X, requesttype: 0x%X, " \
 	      "value 0x%X index 0x%X length 0x%X\n",
-	      request, requesttype, value, index, size);
+	//      request, requesttype, value, index, size);
+	mdelay(10);
 	dev->status = USB_ST_NOT_PROC; /*not yet processed */
 
 	if (submit_control_msg(dev, pipe, data, size, setup_packet) < 0)
@@ -341,12 +342,12 @@ static int usb_parse_config(struct usb_device *dev,
 	dev->configno = cfgno;
 	head = (struct usb_descriptor_header *) &buffer[0];
 	if (head->bDescriptorType != USB_DT_CONFIG) {
-		printf(" ERROR: NOT USB_CONFIG_DESC %x\n",
+		debug(" ERROR: NOT USB_CONFIG_DESC %x\n",
 			head->bDescriptorType);
 		return -1;
 	}
 	if (head->bLength != USB_DT_CONFIG_SIZE) {
-		printf("ERROR: Invalid USB CFG length (%d)\n", head->bLength);
+		debug("ERROR: Invalid USB CFG length (%d)\n", head->bLength);
 		return -1;
 	}
 	memcpy(&dev->config, head, USB_DT_CONFIG_SIZE);
@@ -360,7 +361,7 @@ static int usb_parse_config(struct usb_device *dev,
 		switch (head->bDescriptorType) {
 		case USB_DT_INTERFACE:
 			if (head->bLength != USB_DT_INTERFACE_SIZE) {
-				printf("ERROR: Invalid USB IF length (%d)\n",
+				debug("ERROR: Invalid USB IF length (%d)\n",
 					head->bLength);
 				break;
 			}
@@ -396,7 +397,7 @@ static int usb_parse_config(struct usb_device *dev,
 			break;
 		case USB_DT_ENDPOINT:
 			if (head->bLength != USB_DT_ENDPOINT_SIZE) {
-				printf("ERROR: Invalid USB EP length (%d)\n",
+				debug("ERROR: Invalid USB EP length (%d)\n",
 					head->bLength);
 				break;
 			}
@@ -412,7 +413,7 @@ static int usb_parse_config(struct usb_device *dev,
 			epno = dev->config.if_desc[ifno].no_of_ep;
 			if_desc = &dev->config.if_desc[ifno];
 			if (epno > USB_MAXENDPOINTS) {
-				printf("Interface %d has too many endpoints!\n",
+				debug("Interface %d has too many endpoints!\n",
 					if_desc->desc.bInterfaceNumber);
 				return 1;
 			}
@@ -433,7 +434,7 @@ static int usb_parse_config(struct usb_device *dev,
 			break;
 		case USB_DT_SS_ENDPOINT_COMP:
 			if (head->bLength != USB_DT_SS_EP_COMP_SIZE) {
-				printf("ERROR: Invalid USB EPC length (%d)\n",
+				debug("ERROR: Invalid USB EPC length (%d)\n",
 					head->bLength);
 				break;
 			}
@@ -534,17 +535,17 @@ int usb_get_configuration_no(struct usb_device *dev,
 	result = usb_get_descriptor(dev, USB_DT_CONFIG, cfgno, buffer, 9);
 	if (result < 9) {
 		if (result < 0)
-			printf("unable to get descriptor, error %lX\n",
+			debug("unable to get descriptor, error %lX\n",
 				dev->status);
 		else
-			printf("config descriptor too short " \
+			debug("config descriptor too short " \
 				"(expected %i, got %i)\n", 9, result);
 		return -1;
 	}
 	length = le16_to_cpu(config->wTotalLength);
 
 	if (length > USB_BUFSIZ) {
-		printf("%s: failed to get descriptor - too long: %d\n",
+		debug("%s: failed to get descriptor - too long: %d\n",
 			__func__, length);
 		return -1;
 	}
@@ -587,7 +588,7 @@ int usb_set_interface(struct usb_device *dev, int interface, int alternate)
 		}
 	}
 	if (!if_face) {
-		printf("selecting invalid interface %d", interface);
+		debug("selecting invalid interface %d", interface);
 		return -1;
 	}
 	/*
@@ -828,7 +829,7 @@ struct usb_device *usb_alloc_new_device(void *controller)
 	int i;
 	debug("New Device %d\n", dev_index);
 	if (dev_index == USB_MAX_DEVICE) {
-		printf("ERROR, too many USB Devices, max=%d\n", USB_MAX_DEVICE);
+		debug("ERROR, too many USB Devices, max=%d\n", USB_MAX_DEVICE);
 		return NULL;
 	}
 	/* default Address is 0, real addresses start with 1 */
@@ -863,6 +864,7 @@ void usb_free_device(void)
  */
 __weak int usb_alloc_device(struct usb_device *udev)
 {
+	debug("weak usb_alloc_device()\n");
 	return 0;
 }
 /*
@@ -885,14 +887,13 @@ int usb_new_device(struct usb_device *dev)
 	 * Refer to sec 4.3.2 in xHCI spec rev1.0
 	 */
 	if (usb_alloc_device(dev)) {
-		printf("Cannot allocate device context to get SLOT_ID\n");
+		debug("Cannot allocate device context to get SLOT_ID\n");
 		return -1;
 	}
 
 	/* We still haven't set the Address yet */
 	addr = dev->devnum;
 	dev->devnum = 0;
-
 #ifdef CONFIG_LEGACY_USB_INIT_SEQ
 	/* this is the old and known way of initializing devices, it is
 	 * different than what Windows and Linux are doing. Windows and Linux
@@ -906,7 +907,7 @@ int usb_new_device(struct usb_device *dev)
 
 	err = usb_get_descriptor(dev, USB_DT_DEVICE, 0, tmpbuf, 8);
 	if (err < 8) {
-		printf("\n      USB device not responding, " \
+		debug("\n      USB device not responding, " \
 		       "giving up (status=%lX)\n", dev->status);
 		return 1;
 	}
@@ -943,6 +944,7 @@ int usb_new_device(struct usb_device *dev)
 	 * of that is done for XHCI unlike EHCI.
 	 */
 #ifndef CONFIG_USB_XHCI
+	debug("CONFIG_USB_XHCI is not defined\n");
 	err = usb_get_descriptor(dev, USB_DT_DEVICE, 0, desc, 64);
 	if (err < 0) {
 		debug("usb_new_device: usb_get_descriptor() failed\n");
@@ -968,14 +970,14 @@ int usb_new_device(struct usb_device *dev)
 			}
 		}
 		if (port < 0) {
-			printf("usb_new_device:cannot locate device's port.\n");
+			debug("usb_new_device:cannot locate device's port.\n");
 			return 1;
 		}
 
 		/* reset the port for the second time */
 		err = hub_port_reset(dev->parent, port, &portstatus);
 		if (err < 0) {
-			printf("\n     Couldn't reset port %i\n", port);
+			debug("\n     Couldn't reset port %i\n", port);
 			return 1;
 		}
 	}
@@ -1002,7 +1004,7 @@ int usb_new_device(struct usb_device *dev)
 	err = usb_set_address(dev); /* set address */
 
 	if (err < 0) {
-		printf("\n      USB device not accepting new address " \
+		debug("\n      USB device not accepting new address " \
 			"(error=%lX)\n", dev->status);
 		return 1;
 	}
@@ -1015,10 +1017,10 @@ int usb_new_device(struct usb_device *dev)
 				 tmpbuf, sizeof(dev->descriptor));
 	if (err < tmp) {
 		if (err < 0)
-			printf("unable to get device descriptor (error=%d)\n",
+			debug("unable to get device descriptor (error=%d)\n",
 			       err);
 		else
-			printf("USB device descriptor short read " \
+			debug("USB device descriptor short read " \
 				"(expected %i, got %i)\n", tmp, err);
 		return 1;
 	}
@@ -1031,7 +1033,7 @@ int usb_new_device(struct usb_device *dev)
 	/* only support for one config for now */
 	err = usb_get_configuration_no(dev, tmpbuf, 0);
 	if (err < 0) {
-		printf("usb_new_device: Cannot read configuration, " \
+		debug("usb_new_device: Cannot read configuration, " \
 		       "skipping device %04x:%04x\n",
 		       dev->descriptor.idVendor, dev->descriptor.idProduct);
 		return -1;
@@ -1040,7 +1042,7 @@ int usb_new_device(struct usb_device *dev)
 	usb_set_maxpacket(dev);
 	/* we set the default configuration here */
 	if (usb_set_configuration(dev, dev->config.desc.bConfigurationValue)) {
-		printf("failed to set default configuration " \
+		debug("failed to set default configuration " \
 			"len %d, status %lX\n", dev->act_len, dev->status);
 		return -1;
 	}
@@ -1059,11 +1061,12 @@ int usb_new_device(struct usb_device *dev)
 	if (dev->descriptor.iSerialNumber)
 		usb_string(dev, dev->descriptor.iSerialNumber,
 			   dev->serial, sizeof(dev->serial));
-	debug("Manufacturer %s\n", dev->mf);
+	debug("////Manufacturer %s\n", dev->mf);
 	debug("Product      %s\n", dev->prod);
 	debug("SerialNumber %s\n", dev->serial);
 	/* now prode if the device is a hub */
 	usb_hub_probe(dev, 0);
+	debug("///usb_new_device() end\n");
 	return 0;
 }
 

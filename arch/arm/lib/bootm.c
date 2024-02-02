@@ -19,6 +19,13 @@
 #include <asm/byteorder.h>
 #include <libfdt.h>
 #include <fdt_support.h>
+#if defined(MT7623_ASIC_BOARD)
+#include <configs/mt7623_evb.h>
+#elif defined(MT7622_ASIC_BOARD) || defined(MT7622_FPGA_BOARD)
+#include <configs/mt7622_evb.h>
+#elif defined(LEOPARD_ASIC_BOARD) || defined(LEOPARD_FPGA_BOARD)
+#include <config.h>
+#endif
 #include <asm/bootm.h>
 #include <linux/compiler.h>
 
@@ -176,7 +183,31 @@ static void setup_revision_tag(struct tag **in_params)
 	params->u.revision.rev = rev;
 	params = tag_next (params);
 }
+#if defined (NAND_ABTC_ATAG)
+static void setup_nand_tag(struct tag **in_params)
+{
+	int i,j;
+	extern unsigned int flash_number;
+	params->hdr.tag = ATAG_FLASH_NUMBER_INFO;	
+	params->hdr.size = tag_size (tag_nand_number);
+		
+	params->u.tag_nand_number.number = flash_number;
+	params = tag_next (params);
 
+	for(i = 0; i < flash_number; i++)
+	{
+		//printf("FLASH_INFO[%d] name=%s\n",i,gen_FlashTable[i].devciename);
+		params->hdr.tag = ATAG_FLASH_INFO;
+		params->hdr.size = ((sizeof(struct tag_header) + sizeof(flashdev_info)) >> 2);	
+		memset(&params->u.gen_FlashTable_p, 0, sizeof(flashdev_info));
+		memcpy(&params->u.gen_FlashTable_p, &gen_FlashTable[i],  sizeof(flashdev_info)); 
+        //printf("ATAG_FLASH_INFO[%d] addr=%x name=%s size=%d\n",i,&params->u.gen_FlashTable_p,params->u.gen_FlashTable_p.devciename,params->hdr.size);
+		params = tag_next (params);
+	}
+
+	return ;
+}
+#endif
 static void setup_end_tag(bd_t *bd)
 {
 	params->hdr.tag = ATAG_NONE;
@@ -221,6 +252,7 @@ static void boot_prep_linux(bootm_headers_t *images)
 #endif
 	} else if (BOOTM_ENABLE_TAGS) {
 		debug("using: ATAGS\n");
+#if 1   /* Nelson: workaround to ignore atags for kernel */
 		setup_start_tag(gd->bd);
 		if (BOOTM_ENABLE_SERIAL_TAG)
 			setup_serial_tag(&params);
@@ -236,8 +268,13 @@ static void boot_prep_linux(bootm_headers_t *images)
 						 images->rd_end);
 			}
 		}
+#if defined (NAND_ABTC_ATAG)		
+		if (BOOTM_ENABLE_NAND_TAG)
+			setup_nand_tag(&params);
+#endif
 		setup_board_tags(&params);
 		setup_end_tag(gd->bd);
+#endif
 	} else {
 		printf("FDT and ATAGS support not compiled in - hanging\n");
 		hang();
@@ -262,6 +299,16 @@ static void boot_jump_linux(bootm_headers_t *images, int flag)
 
 	if (!fake)
 		kernel_entry(images->ft_addr);
+#elif defined(CONFIG_MTK_ATF)
+    extern void jumparch64_smc(ulong addr, ulong arg1, ulong arg2);
+
+    /* 
+     * Iverson 20150528 - show message for boot.
+     */
+	debug("images->ep = %lx, images->ft_addr = %lx\n", images->ep, (unsigned long)images->ft_addr);
+    
+	announce_and_cleanup(0);
+    jumparch64_smc(images->ep, (unsigned long)images->ft_addr, 0);
 #else
 	unsigned long machid = gd->bd->bi_arch_number;
 	char *s;
@@ -287,8 +334,9 @@ static void boot_jump_linux(bootm_headers_t *images, int flag)
 	else
 		r2 = gd->bd->bi_boot_params;
 
-	if (!fake)
+	if (!fake){
 		kernel_entry(0, machid, r2);
+   }
 #endif
 }
 

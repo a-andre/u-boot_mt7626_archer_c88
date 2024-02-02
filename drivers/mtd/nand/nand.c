@@ -29,6 +29,21 @@
 #define CONFIG_SYS_NAND_BASE_LIST { CONFIG_SYS_NAND_BASE }
 #endif
 
+#if defined (CONFIG_MTK_MTD_NAND)
+#include <linux/mtd/partitions.h>
+#if defined (MT7622) || defined (MT7623)
+#include <asm/arch/nand/partition_define.h>
+#include <asm/arch/nand/bmt.h>
+extern bmt_struct *g_bmt;
+extern struct mtd_partition g_exist_Partition[PART_MAX_COUNT];
+extern void part_init_pmt(struct mtd_info *mtd, u8 * buf);
+extern int part_num;
+#else
+extern int init_bmt(struct nand_chip * chip,  int size);
+#endif
+extern u32 g_bmt_sz;
+#endif /* CONFIG_MTK_MTD_NAND */
+
 DECLARE_GLOBAL_DATA_PTR;
 
 int nand_curr_device = -1;
@@ -74,6 +89,84 @@ int nand_register(int devnum)
 	return 0;
 }
 
+#define UBOOT_NAND_UNIT_TEST	0
+#if UBOOT_NAND_UNIT_TEST
+#define SNAND_MAX_PAGE_SIZE	(4096)
+#define _SNAND_CACHE_LINE_SIZE  (64)
+static u8 *local_buffer_16_align;   // 16 byte aligned buffer, for HW issue
+__attribute__((aligned(_SNAND_CACHE_LINE_SIZE))) static u8 local_buffer[SNAND_MAX_PAGE_SIZE + _SNAND_CACHE_LINE_SIZE];
+static int g_page_size = 2;
+static int g_block_size = 128;
+int mtk_nand_unit_test_(struct nand_chip *nand_chip, struct mtd_info *mtd)
+{
+    MSG(INIT, "Begin to Kernel nand unit test ... \n");
+    int err = 0;
+    int patternbuff[128] = {
+    0x0103D901, 0xFF1802DF, 0x01200400, 0x00000021, 0x02040122, 0x02010122, 0x03020407, 0x1A050103,
+    0x00020F1B, 0x08C0C0A1, 0x01550800, 0x201B0AC1, 0x41990155, 0x64F0FFFF, 0x201B0C82, 0x4118EA61,
+    0xF00107F6, 0x0301EE1B, 0x0C834118, 0xEA617001, 0x07760301, 0xEE151405, 0x00202020, 0x20202020,
+    0x00202020, 0x2000302E, 0x3000FF14, 0x00FF0000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x01D90301, 0xDF0218FF, 0x00042001, 0x21000000, 0x22010402, 0x22010102, 0x07040203, 0x0301051A,
+    0x1B0F0200, 0xA1C0C008, 0x00085501, 0xC10A1B20, 0x55019941, 0xFFFFF064, 0x820C1B20, 0x61EA1841,
+    0xF60701F0, 0x1BEE0103, 0x1841830C, 0x017061EA, 0x01037607, 0x051415EE, 0x20202000, 0x20202020,
+    0x20202000, 0x2E300020, 0x14FF0030, 0x0000FF00, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000
+    };
+    u32 j, k, p = g_block_size/g_page_size;
+    printk("[P] 0x%x\n", p);
+    u32 val = 0x05, TOTAL=1000;
+
+    local_buffer_16_align = local_buffer;
+
+    for (j = 0x400; j< 0x410; j++)
+    {
+        memset(local_buffer_16_align, 0x00, SNAND_MAX_PAGE_SIZE + _SNAND_CACHE_LINE_SIZE);
+        nand_chip->read_page(mtd, nand_chip, local_buffer_16_align, j*p);
+        MSG(INIT,"[1]0x%x %x %x %x\n", *(int *)local_buffer_16_align, *((int *)local_buffer_16_align+1), *((int *)local_buffer_16_align+2), *((int *)local_buffer_16_align+3));
+        nand_chip->erase(mtd, j*p);
+        memset(local_buffer_16_align, 0x00, SNAND_MAX_PAGE_SIZE + _SNAND_CACHE_LINE_SIZE);
+        if(nand_chip->read_page(mtd, nand_chip, local_buffer_16_align, j*p))
+            printk("Read page 0x%x fail!\n", j*p);
+        MSG(INIT,"[2]0x%x %x %x %x\n", *(int *)local_buffer_16_align, *((int *)local_buffer_16_align+1), *((int *)local_buffer_16_align+2), *((int *)local_buffer_16_align+3));
+        if (nand_chip->block_bad(mtd, j*g_block_size, 0))
+        {
+            printk("Bad block at %x\n", j);
+            continue;
+        }
+	//printk("[%s]mtk_nand_block_bad() PASS!!!\n", __func__);
+	k = 0;
+        {
+		if(nand_chip->write_page(mtd, nand_chip, (u8 *)patternbuff, 0, j*p+k, 0, 0))
+			printk("Write page 0x%x fail!\n", j*p+k);
+        }
+	//printk("[%s]mtk_nand_write_page() PASS!!!\n", __func__);
+
+	memset(local_buffer_16_align, 0x00, g_page_size);
+	if(nand_chip->read_page(mtd, nand_chip, local_buffer_16_align, j*p+k))
+		printk("Read page 0x%x fail!\n", j*p+k);
+	MSG(INIT,"[3]0x%x %x %x %x\n", *(int *)local_buffer_16_align, *((int *)local_buffer_16_align+1), *((int *)local_buffer_16_align+2), *((int *)local_buffer_16_align+3));
+	if(memcmp((u8 *)patternbuff, local_buffer_16_align, 128*4))
+	{
+		MSG(INIT, "[KERNEL_NAND_UNIT_TEST] compare fail!\n");
+		err = -1;
+		while(1);
+	}else
+	{
+		TOTAL--;
+		MSG(INIT, "[KERNEL_NAND_UNIT_TEST] compare OK!\n");
+	}
+    }
+    return err;
+}
+#endif	/* UBOOT_NAND_UNIT_TEST */
+
 #ifndef CONFIG_SYS_NAND_SELF_INIT
 static void nand_init_chip(int i)
 {
@@ -90,11 +183,40 @@ static void nand_init_chip(int i)
 
 	if (board_nand_init(nand))
 		return;
-
+#if defined (CONFIG_MTK_MTD_NAND)
+	memcpy(mtd, nand->priv, sizeof(struct mtd_info));
+#endif
 	if (nand_scan(mtd, maxchips))
 		return;
 
 	nand_register(i);
+
+#if defined (CONFIG_MTK_MTD_NAND)
+	memcpy(nand->priv, mtd, sizeof(struct mtd_info));
+
+#if defined (CONFIG_MTK_SPI_NAND_SUPPORT)
+    if (init_bmt(nand, g_bmt_sz) != 0)
+        {
+        printf("[%s]Error: init bmt failed\n", __func__);
+        }
+#elif !defined(CONFIG_MTK_SLC_NAND_SUPPORT)
+	if (!(g_bmt = init_bmt(nand, g_bmt_sz)))
+        {
+		printf("[%s]Error: init bmt failed\n", __func__);
+        }
+
+	part_init_pmt(mtd, (u8 *) & g_exist_Partition[0]);
+	add_mtd_partitions(mtd, g_exist_Partition, part_num);
+#endif
+
+#if UBOOT_NAND_UNIT_TEST
+	err = mtk_nand_unit_test_(nand, mtd);
+	if (err == 0)
+	{
+		printk("Thanks to GOD, UNIT Test OK!\n");
+	}
+#endif	/* UBOOT_NAND_UNIT_TEST */
+#endif
 }
 #endif
 

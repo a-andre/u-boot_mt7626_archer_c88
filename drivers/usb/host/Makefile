@@ -38,6 +38,6 @@ obj-$(CONFIG_USB_EHCI_TEGRA) += ehci-tegra.o
 obj-$(CONFIG_USB_EHCI_VCT) += ehci-vct.o
 
 # xhci
-obj-$(CONFIG_USB_XHCI) += xhci.o xhci-mem.o xhci-ring.o
+obj-$(CONFIG_USB_XHCI) += xhci.o xhci-mem.o xhci-ring.o xhci-mtk.o xhci-mtk-power.o xhci-mtk-scheduler.o mtk-phy.o mtk-phy-ahb.o mtk-phy-7623.o
 obj-$(CONFIG_USB_XHCI_EXYNOS) += xhci-exynos5.o
 obj-$(CONFIG_USB_XHCI_OMAP) += xhci-omap.o

@@ -1229,6 +1229,76 @@ static int do_mem_crc(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 
 #endif
 
+static int tp_mem_cp(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+{
+	ulong	addr, dest, count, bytes;
+	int	size;
+	const void *src;
+	void *buf;
+	char cmdbuf[70];
+
+	if (argc != 4)
+		return CMD_RET_USAGE;
+
+	/* Check for size specification.
+	*/
+	if ((size = cmd_get_data_size(argv[0], 4)) < 0)
+		return 1;
+
+	addr = simple_strtoul(argv[1], NULL, 16);
+	dest = simple_strtoul(argv[2], NULL, 16);
+	count = simple_strtoul(argv[3], NULL, 16);
+
+	if (count == 0) {
+		puts ("Zero length ???\n");
+		return 1;
+	}
+	bytes = size * count;
+
+	/* check if we are copying to Flash */
+	if (check_addr_flash(dest) == 0){
+		dest -= gd->bd->bi_flashstart;
+		puts ("Copy to Flash... ");
+
+		sprintf(cmdbuf, "snor write 0x%x 0x%x 0x%x", (uint32_t)addr, dest, bytes);
+		if(run_command(cmdbuf, 0) < 0)
+		{
+			return CMD_RET_USAGE;
+		}
+		return 0;
+	}
+
+	buf = map_sysmem(dest, bytes);
+	src = map_sysmem(addr, bytes);
+	while (count-- > 0) {
+		if (size == 4)
+			*((u32 *)buf) = *((u32  *)src);
+#ifdef CONFIG_SYS_SUPPORT_64BIT_DATA
+		else if (size == 8)
+			*((u64 *)buf) = *((u64 *)src);
+#endif
+		else if (size == 2)
+			*((u16 *)buf) = *((u16 *)src);
+		else
+			*((u8 *)buf) = *((u8 *)src);
+		src += size;
+		buf += size;
+	}
+	return 0;
+}
+
+#ifdef CONFIG_TINY_BOOT
+U_BOOT_CMD(
+	cp,	4,	1,	tp_mem_cp,
+	"memory copy",
+#ifdef CONFIG_SYS_SUPPORT_64BIT_DATA
+	"[.b, .w, .l, .q] source target count"
+#else
+	"[.b, .w, .l] source target count"
+#endif
+);
+#endif
+
 /**************************************************/
 U_BOOT_CMD(
 	md,	3,	1,	do_mem_md,
@@ -1240,7 +1310,7 @@ U_BOOT_CMD(
 #endif
 );
 
-
+#ifndef CONFIG_TINY_BOOT
 U_BOOT_CMD(
 	mm,	2,	1,	do_mem_mm,
 	"memory modify (auto-incrementing address)",
@@ -1291,7 +1361,7 @@ U_BOOT_CMD(
 	"[.b, .w, .l] addr1 addr2 count"
 #endif
 );
-
+#endif
 #ifdef CONFIG_CMD_CRC32
 
 #ifndef CONFIG_CRC32_VERIFY
@@ -1331,6 +1401,7 @@ static int do_mem_info(cmd_tbl_t *cmdtp, int flag, int argc,
 }
 #endif
 
+#ifndef CONFIG_TINY_BOOT
 U_BOOT_CMD(
 	base,	2,	1,	do_mem_base,
 	"print or set address offset",
@@ -1347,7 +1418,7 @@ U_BOOT_CMD(
 	"[.b, .w, .l] address number_of_objects"
 #endif
 );
-
+#endif
 #ifdef CONFIG_LOOPW
 U_BOOT_CMD(
 	loopw,	4,	1,	do_mem_loopw,

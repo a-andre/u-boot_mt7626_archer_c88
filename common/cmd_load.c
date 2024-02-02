@@ -138,6 +138,9 @@ static ulong load_serial(long offset)
 	ulong	end_addr   =  0;
 	int	line_count =  0;
 
+	/* set the default filesize to 0 before we to the real download */
+	setenv_hex("filesize", 0);
+
 	while (read_record(record, SREC_MAXRECLEN + 1) >= 0) {
 		type = srec_decode(record, &binlen, &addr, binbuf);
 
@@ -512,6 +515,9 @@ static ulong load_serial_bin(ulong offset)
 
 	set_kerm_bin_mode((ulong *) offset);
 	size = k_recv();
+
+	/* set the default filesize to 0 before we to the real download */
+	setenv_hex("filesize", 0);
 
 	/*
 	 * Gather any trailing characters (for instance, the ^D which
@@ -959,6 +965,9 @@ static ulong load_serial_ymodem(ulong offset, int mode)
 	char ymodemBuf[1024];
 	ulong store_addr = ~0;
 	ulong addr = 0;
+
+	/* set the default filesize to 0 before we to the real download */
+	setenv_hex("filesize", 0);
 
 	size = 0;
 	info.mode = mode;
