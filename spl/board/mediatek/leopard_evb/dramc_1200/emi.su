@@ -1,0 +1,2 @@
+emi.c:27:6:EMI_Init	0	static
+emi.c:48:6:mt_set_emi	8	static

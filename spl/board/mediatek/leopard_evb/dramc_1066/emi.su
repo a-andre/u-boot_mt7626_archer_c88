@@ -1,0 +1,3 @@
+emi.c:27:6:EMI_Init	0	static
+emi.c:45:6:ddr3_rank_size_detect	16	static
+emi.c:150:6:mt_set_emi	8	static

@@ -1,0 +1,5 @@
+hal_io.c:26:5:u4Dram_Register_Read	0	static
+hal_io.c:38:4:ucDram_Register_Write	0	static
+hal_io.c:55:6:vIO32Write4BMsk	0	static
+hal_io.c:66:6:vIO32Write4B_All	0	static
+hal_io.c:71:6:vIO32Write4BMsk_All	0	static

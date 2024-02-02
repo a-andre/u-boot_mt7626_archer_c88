@@ -1,0 +1,2 @@
+dramc_pi_main.c:188:6:vDramCPUReadWriteTestAfterCalibration	0	static
+dramc_pi_main.c:261:5:Init_DRAM	8	static
